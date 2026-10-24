@@ -1,4 +1,16 @@
 node_modules
+.next
+out
 dist
+.env
+.env.*
+!.env.example
 .DS_Store
 *.log
+*.tsbuildinfo
+next-env.d.ts
+coverage
+playwright-report
+test-results
+.archify/
+AGENTS.md
