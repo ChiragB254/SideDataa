@@ -4,9 +4,9 @@ import { ServiceIllustration } from "./illustrations/ServiceIllustrations";
 
 export function ServiceCards() {
   return (
-    <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {services.map((s, i) => (
-        <li key={s.slug} className="card flex flex-col">
+        <li key={s.slug} className="card flex min-w-0 flex-col">
           <div className="art-panel bg-dots border-0 border-b p-5">
             <ServiceIllustration slug={s.slug} />
           </div>
@@ -22,7 +22,7 @@ export function ServiceCards() {
                 {s.title}
               </Link>
             </h3>
-            <p className="mt-2 flex-1 text-ink-soft">{s.summary}</p>
+            <p className="mt-2 flex-1 break-words text-ink-soft">{s.summary}</p>
             <p className="mt-4 inline-flex items-center gap-1.5 font-medium text-accent">
               Read more
               <svg
@@ -42,7 +42,7 @@ export function ServiceCards() {
           </div>
         </li>
       ))}
-      <li className="flex flex-col justify-center border border-dashed border-rule-strong p-5">
+      <li className="flex flex-col justify-center border border-dashed border-muted p-5">
         <h3 className="text-2xl leading-snug">Not sure where it fits?</h3>
         <p className="mt-2 text-ink-soft">
           Many needs sit between two areas. Tell us what you are trying to get done.

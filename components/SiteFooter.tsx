@@ -5,11 +5,11 @@ import { services } from "@/content/services";
 import { site } from "@/lib/site";
 
 const linkClass =
-  "inline-flex min-h-11 items-center text-ink-soft underline-offset-4 hover:text-accent hover:underline";
+  "inline-flex min-h-11 max-w-full items-center [overflow-wrap:anywhere] text-ink-soft underline-offset-4 hover:text-accent hover:underline";
 
 export function SiteFooter() {
   return (
-    <footer className="mt-24 border-t border-rule bg-wash">
+    <footer className="border-t border-rule bg-wash">
       <Container className="py-14">
         <div className="grid gap-10 md:grid-cols-12">
           <div className="md:col-span-5">

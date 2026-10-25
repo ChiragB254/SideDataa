@@ -13,15 +13,16 @@ export type Role = {
 
 /*
  * TODO(owner): confirm each role description matches what you actually want
- * these people to do. Pay, hours, work location and contract terms are
- * intentionally absent; the page says they are shared in conversation.
+ * these interns to do. The page states that the internships are unpaid and run in
+ * India; hours, duration and other terms are intentionally absent and are shared
+ * with applicants. Descriptions avoid promising client projects, code review or
+ * written feedback; add those back only if you will provide them.
  */
 export const roles: Role[] = [
   {
     slug: "web-developer",
     title: "Web Developer",
-    summary:
-      "Build and maintain websites and web applications for SideData and for client work.",
+    summary: "Build and maintain websites and web applications.",
     youWillWorkOn: [
       "Pages, components and forms in TypeScript, React and Next.js",
       "Accessibility fixes and performance improvements",
@@ -47,7 +48,7 @@ export const roles: Role[] = [
     youWillWorkOn: [
       "Website copy, service descriptions and guides",
       "Technical articles written with engineers",
-      "Documentation and handover notes for client projects",
+      "Documentation and handover notes",
       "Editing and fact-checking each other's work",
     ],
     youWillLearn: [

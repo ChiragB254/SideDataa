@@ -4,7 +4,7 @@
  * Design tokens. One warm neutral palette, one muted accent.
  * --color-tint is a pale teal wash used for alternating sections.
  * Contrast (against --color-paper #FAF9F6):
- *   ink 15.6:1, ink-soft 8.6:1, muted 5.9:1, accent 6.9:1, danger 7.3:1
+ *   ink 15.6:1, ink-soft 9.09:1, muted 5.96:1, accent 6.9:1, danger 7.3:1
  */
 @theme {
   --color-paper: #faf9f6;
@@ -52,6 +52,7 @@
     letter-spacing: -0.012em;
     color: var(--color-ink);
     text-wrap: balance;
+    overflow-wrap: break-word;
   }
   :focus-visible {
     outline: 2px solid var(--color-accent);

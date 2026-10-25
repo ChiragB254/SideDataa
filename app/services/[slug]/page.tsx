@@ -58,7 +58,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
             </ol>
           </nav>
           <div className="mt-2 grid items-center gap-10 lg:grid-cols-12">
-            <div className="lg:col-span-7">
+            <div className="min-w-0 lg:col-span-7">
               <h1 className="mt-2 max-w-[22ch] text-5xl leading-[1.1] md:text-6xl">
                 {service.title}
               </h1>
@@ -68,7 +68,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
                 ))}
               </div>
             </div>
-            <div className="art-panel bg-dots p-6 lg:col-span-5">
+            <div className="art-panel bg-dots mx-auto w-full max-w-md min-w-0 p-6 lg:col-span-5 lg:max-w-none">
               <ServiceIllustration slug={service.slug} />
             </div>
           </div>

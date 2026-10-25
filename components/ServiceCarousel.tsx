@@ -30,17 +30,48 @@ export function ServiceCarousel() {
     () => false,
   );
 
-  const goTo = useCallback((index: number) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const next = (index + total) % total;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setActive(next);
-    track.scrollTo({
-      left: next * track.clientWidth,
-      behavior: reduce ? "auto" : "smooth",
-    });
+  // While a button-driven scroll is in flight, this holds the slide it is heading
+  // to. Scroll events are ignored (they pass through intermediate slides) until
+  // the track arrives, so aria-current, inert and rapid presses stay consistent.
+  const targetRef = useRef<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [announcement, setAnnouncement] = useState("");
+
+  const finish = useCallback(() => {
+    clearTimeout(timer.current);
+    const target = targetRef.current;
+    if (target === null) return;
+    targetRef.current = null;
+    const svc = services[target];
+    if (svc) setAnnouncement(`Slide ${target + 1} of ${total}: ${svc.title}`);
   }, []);
+
+  const cancelTarget = useCallback(() => {
+    clearTimeout(timer.current);
+    targetRef.current = null;
+  }, []);
+
+  const move = useCallback(
+    (to: number) => {
+      const track = trackRef.current;
+      if (!track) return;
+      const next = ((to % total) + total) % total;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      targetRef.current = next;
+      setActive(next);
+      setAnnouncement("");
+      track.scrollTo({
+        left: next * track.clientWidth,
+        behavior: reduce ? "auto" : "smooth",
+      });
+      clearTimeout(timer.current);
+      // Fallback for browsers without `scrollend` or when no scroll event fires.
+      timer.current = setTimeout(finish, 700);
+    },
+    [finish],
+  );
+
+  const step = (delta: number) => move((targetRef.current ?? active) + delta);
 
   // Keep `active` in step with swipes and native scrolling.
   const onScroll = () => {
@@ -48,6 +79,11 @@ export function ServiceCarousel() {
     frame.current = requestAnimationFrame(() => {
       const track = trackRef.current;
       if (!track || !track.clientWidth) return;
+      const target = targetRef.current;
+      if (target !== null) {
+        if (Math.abs(track.scrollLeft - target * track.clientWidth) < 2) finish();
+        return;
+      }
       const idx = Math.round(track.scrollLeft / track.clientWidth);
       setActive((cur) => (idx >= 0 && idx < total && idx !== cur ? idx : cur));
     });
@@ -68,14 +104,22 @@ export function ServiceCarousel() {
     return () => ro.disconnect();
   }, [active]);
 
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(frame.current);
+      clearTimeout(timer.current);
+    },
+    [],
+  );
 
   return (
     <section role="region" aria-roledescription="carousel" aria-label="What we build">
       <div
         ref={trackRef}
         onScroll={onScroll}
-        aria-live="polite"
+        onScrollEnd={finish}
+        onTouchStart={cancelTarget}
+        onWheel={cancelTarget}
         className="carousel-track art-panel bg-dots"
       >
         {services.map((s, i) => (
@@ -85,12 +129,12 @@ export function ServiceCarousel() {
             aria-roledescription="slide"
             aria-label={`${i + 1} of ${total}`}
             inert={ready && i !== active}
-            className="carousel-slide grid items-center gap-6 p-5 sm:p-8 md:grid-cols-2 md:gap-10 md:p-10"
+            className="carousel-slide grid items-center gap-6 p-5 sm:p-8 lg:grid-cols-2 lg:gap-10 lg:p-10"
           >
-            <div className="bg-paper p-4 md:p-6">
+            <div className="mx-auto w-full max-w-sm bg-paper p-4 lg:max-w-none lg:p-6">
               <ServiceIllustration slug={s.slug} />
             </div>
-            <div>
+            <div className="bg-paper p-4 lg:p-6">
               <p className="font-serif text-sm text-muted tabular-nums">
                 {String(i + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
               </p>
@@ -111,70 +155,82 @@ export function ServiceCarousel() {
         ))}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-1" role="group" aria-label="Choose a slide">
-          {services.map((s, i) => (
-            <button
-              key={s.slug}
-              type="button"
-              onClick={() => goTo(i)}
-              aria-label={`Show slide ${i + 1} of ${total}: ${s.title}`}
-              aria-current={i === active ? "true" : undefined}
-              className="group inline-flex h-11 w-11 items-center justify-center"
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement}
+      </p>
+
+      <div className="mt-5 flex min-h-11 flex-wrap items-center justify-between gap-4">
+        {ready ? (
+          <>
+            <div
+              className="flex items-center gap-1"
+              role="group"
+              aria-label="Choose a slide"
             >
-              <span
-                aria-hidden="true"
-                className={`block h-3.5 w-3.5 rounded-full border-2 transition-colors duration-150 ${
-                  i === active
-                    ? "border-accent bg-accent"
-                    : "border-muted bg-transparent group-hover:bg-muted"
-                }`}
-              />
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => goTo(active - 1)}
-            aria-label="Previous slide"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              className="h-4 w-4"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path
-                d="M13.5 8H2.5M7 3.5 2.5 8 7 12.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => goTo(active + 1)}
-            aria-label="Next slide"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              className="h-4 w-4"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path
-                d="M2.5 8h11M9 3.5 13.5 8 9 12.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-            </svg>
-          </button>
-        </div>
+              {services.map((s, i) => (
+                <button
+                  key={s.slug}
+                  type="button"
+                  onClick={() => move(i)}
+                  aria-label={`Show slide ${i + 1} of ${total}: ${s.title}`}
+                  aria-current={i === active ? "true" : undefined}
+                  className="group inline-flex h-11 w-11 items-center justify-center"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`block h-3.5 w-3.5 rounded-full border-2 transition-colors duration-150 ${
+                      i === active
+                        ? "border-accent bg-accent"
+                        : "border-muted bg-transparent group-hover:bg-muted"
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => step(-1)}
+                aria-label="Previous slide"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M13.5 8H2.5M7 3.5 2.5 8 7 12.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => step(1)}
+                aria-label="Next slide"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-4 w-4"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M2.5 8h11M9 3.5 13.5 8 9 12.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
     </section>
   );

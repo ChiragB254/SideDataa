@@ -31,15 +31,17 @@ export const metadata = pageMetadata({
  */
 
 /*
- * TODO(owner): confirm the learning commitments below (mentorship, review,
- * written feedback, real projects) are what you will actually provide, and
- * decide how and when you will reply to applicants. Hours, duration and
- * working arrangements are deliberately not stated anywhere on this page.
+ * TODO(owner): the page states only the programme facts you gave: unpaid, runs in
+ * India, joint venture with Right Click Orbit (India), and three perks. A "How you
+ * learn" section (real projects, code review, written feedback, mentorship detail)
+ * was removed because none of it was confirmed; add it back, in your own words, once
+ * you know what you will provide. Also decide how and when you will reply to
+ * applicants. Hours, duration and working arrangements are deliberately not stated.
  */
 const perks = [
   {
     title: "Mentorship",
-    body: "Someone more experienced guides your work and explains the reasoning.",
+    body: "You receive mentorship from the team.",
     Icon: MentorshipIcon,
   },
   {
@@ -51,25 +53,6 @@ const perks = [
     title: "An experience letter",
     body: "You receive an experience letter.",
     Icon: LetterIcon,
-  },
-];
-
-const learning = [
-  {
-    title: "Real projects",
-    body: "You work on the website and on real software and content, not exercises set up for training. What you make is used.",
-  },
-  {
-    title: "Mentorship",
-    body: "You work alongside someone more experienced who explains the reasoning, not only the answer, and who you can ask when you are stuck.",
-  },
-  {
-    title: "Code and work review",
-    body: "Everything is reviewed by a second person before it ships. Reviews are conversations about the work, with reasons given.",
-  },
-  {
-    title: "Written feedback",
-    body: "Feedback is written down and specific, so you can reread it, act on it and see your progress over time.",
   },
 ];
 
@@ -109,7 +92,6 @@ export default function CareersPage() {
             </li>
           ))}
         </ul>
-        <p className="measure mt-8 text-ink-soft">These internships are unpaid.</p>
       </Row>
 
       <Row
@@ -124,14 +106,11 @@ export default function CareersPage() {
           </p>
           <p>
             <a
-              className="link inline-flex min-h-11 items-center"
+              className="link"
               href="https://rightclickorbit.com"
               rel="noopener noreferrer"
             >
-              rightclickorbit.com
-              <span className="ml-1.5 text-sm text-muted no-underline">
-                (a different website)
-              </span>
+              rightclickorbit.com (a different website)
             </a>
           </p>
         </div>
@@ -149,36 +128,8 @@ export default function CareersPage() {
             explaining things clearly, designing interfaces people can use, and producing
             documents and visuals that hold up to scrutiny.
           </p>
-          <p>
-            The roles below are for people who will work on those parts alongside the
-            engineers.
-          </p>
+          <p>The roles below cover those parts of the work.</p>
         </div>
-      </Row>
-
-      <Row
-        id="learning"
-        tone="wash"
-        label="How you learn"
-        heading={<RowTitle id="learning">Four ways we help you improve.</RowTitle>}
-      >
-        <ol className="border-b border-rule">
-          {learning.map((item, i) => (
-            <li
-              key={item.title}
-              className="grid gap-1 border-t border-rule py-5 md:grid-cols-[3rem_14rem_1fr] md:gap-8"
-            >
-              <span
-                className="font-serif text-lg text-muted tabular-nums"
-                aria-hidden="true"
-              >
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <h3 className="text-xl leading-snug">{item.title}</h3>
-              <p className="text-ink-soft">{item.body}</p>
-            </li>
-          ))}
-        </ol>
       </Row>
 
       <Row
@@ -234,15 +185,14 @@ export default function CareersPage() {
         heading={<RowTitle id="terms">Hours and arrangements.</RowTitle>}
       >
         <p className="measure text-ink-soft">
-          Details such as hours and the terms of the arrangement are shared during the
-          conversation, so that they can be explained properly and fit the role. Ask
+          Details such as hours and the terms of the arrangement are shared with
+          applicants, so that they can be explained properly and fit the role. Ask
           anything you like before you decide.
         </p>
       </Row>
 
       <Row
         id="apply"
-        tone="tint"
         label="Apply"
         heading={<RowTitle id="apply">Tell us about yourself.</RowTitle>}
       >
@@ -254,7 +204,7 @@ export default function CareersPage() {
             <a className="link" href={`mailto:${site.email}`}>
               {site.email}
             </a>
-            . Your details are used only to consider your application; see the{" "}
+            . We use your details to consider your application; see the{" "}
             <Link className="link" href="/privacy">
               privacy notice
             </Link>

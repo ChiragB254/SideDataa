@@ -13,12 +13,12 @@ export default function HomePage() {
     <>
       <section className="py-14 md:py-20">
         <Container>
-          <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-10">
-            <div className="lg:col-span-7">
+          <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-10">
+            <div className="min-w-0 lg:col-span-7 xl:col-span-6">
               <p className="eyebrow">
                 {site.name} &middot; {site.locationLabel}
               </p>
-              <h1 className="mt-6 max-w-[22ch] text-[2.5rem] leading-[1.06] sm:text-6xl lg:text-[3.75rem]">
+              <h1 className="mt-6 max-w-[22ch] text-[2.5rem] leading-[1.06] break-words sm:text-6xl lg:text-[3.5rem] xl:text-[3.75rem]">
                 We build software and AI systems, and look after the infrastructure behind
                 them.
               </h1>
@@ -39,7 +39,7 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
-            <div className="bg-dots lg:col-span-5">
+            <div className="art-panel bg-dots mx-auto w-full max-w-md min-w-0 p-4 sm:p-6 lg:col-span-5 lg:max-w-none xl:col-span-6">
               <HeroIllustration />
             </div>
           </div>
@@ -86,7 +86,7 @@ export default function HomePage() {
           {stack.map((s) => (
             <div
               key={s.group}
-              className="grid gap-1 border-t border-rule py-4 sm:grid-cols-[14rem_1fr] sm:gap-8"
+              className="grid gap-1 border-t border-rule py-4 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] md:gap-8"
             >
               <dt className="text-muted">{s.group}</dt>
               <dd>{s.items.join(", ")}</dd>

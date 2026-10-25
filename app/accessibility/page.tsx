@@ -42,6 +42,10 @@ export default function AccessibilityPage() {
           do everything swiping does, and slides that are not showing are hidden from
           keyboard and screen reader navigation.
         </li>
+        <li>
+          The carousel buttons need JavaScript. Without it the slides can still be
+          scrolled and tabbed through, and every service is linked from the footer.
+        </li>
         <li>Text and interface colours chosen for sufficient contrast.</li>
         <li>
           Form fields with visible labels, instructions, and error messages tied to each
@@ -60,7 +64,7 @@ export default function AccessibilityPage() {
 
       <h2>How we check</h2>
       <p>
-        This site is built to meet WCAG 2.2 level AA. Automated accessibility checks
+        This site aims to meet WCAG 2.2 level AA. Automated accessibility checks
         (axe-core) and browser tests for keyboard use, reflow at 320 pixels, target size
         and reduced motion run against the site as part of our test suite. Automated tests
         find only some problems, and some criteria can only be checked by a person. We
