@@ -21,7 +21,9 @@ function Tile({
   const inner = (
     <>
       <span className="text-sm text-muted">{label}</span>
-      <span className="font-medium [overflow-wrap:anywhere]">{children}</span>
+      <span className="text-[0.9375rem] font-medium [overflow-wrap:anywhere] min-[400px]:text-base">
+        {children}
+      </span>
     </>
   );
   return (
@@ -49,7 +51,7 @@ export function DigitalCard({ card }: { card: Card }) {
       <Container>
         <article
           aria-labelledby="card-name"
-          className="mx-auto w-full max-w-md border border-rule bg-white p-6 sm:p-8"
+          className="mx-auto w-full max-w-md border border-rule bg-white p-5 min-[400px]:p-6 sm:p-8"
         >
           <Logo />
           <p className="eyebrow mt-8">Digital card</p>
@@ -99,7 +101,7 @@ export function DigitalCard({ card }: { card: Card }) {
             />
           </div>
 
-          <div className="mt-6 flex items-center gap-5 border-t border-rule pt-6">
+          <div className="mt-6 flex flex-col items-start gap-4 border-t border-rule pt-6 min-[400px]:flex-row min-[400px]:items-center min-[400px]:gap-5">
             <QrCode slug={card.slug} className="h-28 w-28 shrink-0 border border-rule" />
             <div className="min-w-0">
               <p className="text-sm text-muted">Scan to open this card</p>
