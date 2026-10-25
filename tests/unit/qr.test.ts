@@ -14,7 +14,8 @@ async function rasterise(page: Page, svg: string): Promise<Uint8ClampedArray> {
   const px = await page.evaluate(
     async ([markup, side]) => {
       const img = new Image();
-      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup as string);
+      img.src =
+        "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup as string);
       await img.decode();
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = side as number;
@@ -53,7 +54,9 @@ describe("QR codes decode to the card URL", () => {
       for (const variant of variants) {
         for (const c of cards) {
           const px = await rasterise(page, qrSvg(makeQr(cardUrl(c)), variant));
-          expect(jsQR(px, SIDE, SIDE)?.data, `${c.slug} ${variant.dark}`).toBe(cardUrl(c));
+          expect(jsQR(px, SIDE, SIDE)?.data, `${c.slug} ${variant.dark}`).toBe(
+            cardUrl(c),
+          );
         }
       }
       // The committed path data (what the website renders) decodes too.

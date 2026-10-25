@@ -32,9 +32,9 @@ describe("card data", () => {
   });
   it("rejects duplicates, person without title, phone without dial number", () => {
     expect(() => assertValidCards([base, base])).toThrow(/Duplicate/);
-    expect(() => assertValidCards([base, { ...base, slug: "p", kind: "person" }])).toThrow(
-      /title/,
-    );
+    expect(() =>
+      assertValidCards([base, { ...base, slug: "p", kind: "person" }]),
+    ).toThrow(/title/);
     expect(() => assertValidCards([{ ...base, phone: "+1 1" }])).toThrow(/together/);
     expect(() => assertValidCards([{ ...base, slug: "other" }])).toThrow(/required/);
   });
