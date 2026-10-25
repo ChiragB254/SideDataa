@@ -16,6 +16,7 @@ export const metadata = pageMetadata({
   description:
     "Unpaid internships in India for a Web Developer, a Content Writer, and a UI/UX and Graphic Designer, run under a joint venture between SideData Technologies and Right Click Orbit (India). Mentorship, a Claude subscription and an experience letter.",
   path: "/careers",
+  ownImage: true,
 });
 
 /*
