@@ -3,6 +3,7 @@ import { POST as contactPOST } from "@/app/api/contact/route";
 import { POST as applyPOST } from "@/app/api/apply/route";
 import { resetRateLimit } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/submission";
+import { tinyDocx, tinyPdf } from "../fixtures/files";
 
 const send = vi.fn();
 vi.mock("resend", () => ({
@@ -194,16 +195,255 @@ describe("POST /api/apply", () => {
     message: "I write about technology and enjoy editing.",
   };
 
-  it("sends an application email", async () => {
-    const res = await applyPOST(jsonReq("/api/apply", application));
+  /** Multipart request with an honest Content-Length, like a browser sends. */
+  async function applyReq(
+    fields: Record<string, string>,
+    file: { name: string; bytes: Uint8Array; type?: string } | null,
+    headers: Record<string, string> = {},
+  ) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    if (file) {
+      fd.set(
+        "resume",
+        new File([file.bytes as BlobPart], file.name, {
+          type: file.type ?? "application/octet-stream",
+        }),
+      );
+    }
+    const probe = new Request("http://localhost/api/apply", { method: "POST", body: fd });
+    const buf = new Uint8Array(await probe.arrayBuffer());
+    return new Request("http://localhost/api/apply", {
+      method: "POST",
+      headers: {
+        "content-type": probe.headers.get("content-type")!,
+        "content-length": String(buf.length),
+        accept: "application/json",
+        "x-forwarded-for": "1.1.1.1",
+        ...headers,
+      },
+      body: buf,
+    });
+  }
+
+  const pdf = { name: "Sam Resume.pdf", bytes: tinyPdf(), type: "application/pdf" };
+
+  it("sends an application email with the resume attached", async () => {
+    const res = await applyPOST(await applyReq(application, pdf));
     expect(res.status).toBe(200);
-    expect(send.mock.calls[0]![0].subject).toContain("Content Writer");
+    expect(send).toHaveBeenCalledOnce();
+    const arg = send.mock.calls[0]![0];
+    expect(arg.subject).toContain("Content Writer");
+    expect(arg.attachments).toHaveLength(1);
+    expect(arg.attachments[0].filename).toBe("Sam Resume.pdf");
+    expect(arg.attachments[0].content.length).toBe(pdf.bytes.length);
+    expect(Buffer.isBuffer(arg.attachments[0].content)).toBe(true);
+    expect(arg.text).toContain("Resume: Sam Resume.pdf");
+    expect(arg.html).toBeUndefined();
+  });
+
+  it("sanitises a hostile file name for the attachment", async () => {
+    const res = await applyPOST(
+      await applyReq(application, { ...pdf, name: "../../etc/pa<ss>wd é.PDF" }),
+    );
+    expect(res.status).toBe(200);
+    const name = send.mock.calls[0]![0].attachments[0].filename as string;
+    expect(name).toMatch(/^[A-Za-z0-9._ -]+\.pdf$/);
+    expect(name).not.toContain("/");
+  });
+
+  it("attaches a valid DOCX with the right content type", async () => {
+    const res = await applyPOST(
+      await applyReq(application, { name: "cv.docx", bytes: tinyDocx() }),
+    );
+    expect(res.status).toBe(200);
+    expect(send.mock.calls[0]![0].attachments[0].contentType).toContain(
+      "wordprocessingml",
+    );
+  });
+
+  it("returns 400 with a resume field error when the file is missing", async () => {
+    const res = await applyPOST(await applyReq(application, null));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.code).toBe("invalid");
+    expect(json.errors.resume).toBe("Attach your resume.");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("reports file errors before the email service is considered (503 comes last)", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RESEND_API_KEY", "");
+    const bad = await applyPOST(
+      await applyReq(application, {
+        name: "a.pdf",
+        bytes: new TextEncoder().encode("MZ nope"),
+      }),
+    );
+    expect(bad.status).toBe(400);
+    const ok = await applyPOST(
+      await applyReq(application, pdf, { "x-forwarded-for": "4.4.4.4" }),
+    );
+    expect(ok.status).toBe(503);
+  });
+
+  it("rejects a wrong file type and an empty file", async () => {
+    const wrong = await applyPOST(
+      await applyReq(application, { name: "a.png", bytes: tinyPdf() }),
+    );
+    expect((await wrong.json()).errors.resume).toBe(
+      "Resumes must be a PDF or DOCX file.",
+    );
+    const empty = await applyPOST(
+      await applyReq(application, { name: "a.pdf", bytes: new Uint8Array() }),
+    );
+    expect((await empty.json()).errors.resume).toBe("That file looks empty.");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("returns field and resume errors together", async () => {
+    const res = await applyPOST(await applyReq({ ...application, role: "nope" }, null));
+    const json = await res.json();
+    expect(json.errors.role).toBeTruthy();
+    expect(json.errors.resume).toBeTruthy();
   });
 
   it("rejects an invalid role", async () => {
-    const res = await applyPOST(jsonReq("/api/apply", { ...application, role: "nope" }));
+    const res = await applyPOST(await applyReq({ ...application, role: "nope" }, pdf));
     expect(res.status).toBe(400);
     expect((await res.json()).errors.role).toBeTruthy();
+  });
+
+  it("returns 413 when Content-Length is over the cap, before reading the body", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled += 1;
+        c.enqueue(new Uint8Array(1024));
+      },
+    });
+    const req = new Request("http://localhost/api/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "multipart/form-data; boundary=x",
+        "content-length": String(6 * 1024 * 1024),
+        accept: "application/json",
+        "x-forwarded-for": "1.1.1.1",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    const res = await applyPOST(req);
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe("too_large");
+    expect(pulled).toBeLessThanOrEqual(2);
+  });
+
+  it("returns 413 when Content-Length is missing", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new Uint8Array(10));
+        c.close();
+      },
+    });
+    const req = new Request("http://localhost/api/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "multipart/form-data; boundary=x",
+        accept: "application/json",
+        "x-forwarded-for": "1.1.1.1",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect((await applyPOST(req)).status).toBe(413);
+  });
+
+  it("stops reading at the byte cap when Content-Length lies", async () => {
+    let sent = 0;
+    const chunk = new Uint8Array(256 * 1024);
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent += chunk.length;
+        c.enqueue(chunk);
+        if (sent > 50 * 1024 * 1024) c.close();
+      },
+    });
+    const req = new Request("http://localhost/api/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "multipart/form-data; boundary=x",
+        "content-length": "1000",
+        accept: "application/json",
+        "x-forwarded-for": "1.1.1.1",
+      },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    const res = await applyPOST(req);
+    expect(res.status).toBe(413);
+    // Cap is 5.5 MB; allow a little read-ahead from the stream queue.
+    expect(sent).toBeLessThan(8 * 1024 * 1024);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still enforces the origin check", async () => {
+    const res = await applyPOST(
+      await applyReq(application, pdf, {
+        origin: "https://evil.example",
+        host: "localhost",
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still rate limits to 5 per 10 minutes, and drops the honeypot silently", async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await applyPOST(await applyReq(application, pdf))).status).toBe(200);
+    }
+    const res = await applyPOST(await applyReq(application, pdf));
+    expect(res.status).toBe(429);
+    const bot = await applyPOST(
+      await applyReq({ ...application, website: "http://spam.example" }, pdf, {
+        "x-forwarded-for": "5.5.5.5",
+      }),
+    );
+    expect(bot.status).toBe(200);
+    expect(send).toHaveBeenCalledTimes(5);
+  });
+
+  it("redirects a no-JavaScript multipart post to the status page, with a code for file errors", async () => {
+    const ok = await applyPOST(await applyReq(application, pdf, { accept: "text/html" }));
+    expect(ok.status).toBe(303);
+    expect(ok.headers.get("location")).toContain("result=sent");
+    const bad = await applyPOST(
+      await applyReq(application, null, {
+        accept: "text/html",
+        "x-forwarded-for": "6.6.6.6",
+      }),
+    );
+    expect(bad.headers.get("location")).toContain("result=invalid_resume");
+  });
+
+  it("never logs resume content or message text", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RESEND_API_KEY", "");
+    const error = vi.spyOn(console, "error");
+    const info = vi.spyOn(console, "info");
+    await applyPOST(await applyReq(application, pdf));
+    const logged = JSON.stringify([...info.mock.calls, ...error.mock.calls]);
+    expect(logged).not.toContain("%PDF");
+    expect(logged).not.toContain(application.message);
+  });
+
+  it("returns 502 and stores nothing when the email provider fails", async () => {
+    send.mockResolvedValue({
+      data: null,
+      error: { name: "validation_error", message: "x" },
+    });
+    const res = await applyPOST(await applyReq(application, pdf));
+    expect(res.status).toBe(502);
   });
 });
 

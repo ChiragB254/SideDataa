@@ -4,6 +4,7 @@ export type OutgoingMail = {
   subject: string;
   text: string;
   replyTo: string;
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 };
 
 export type MailResult = "sent" | "logged" | "unavailable" | "failed";
@@ -30,10 +31,15 @@ export async function sendMail(mail: OutgoingMail): Promise<MailResult> {
       console.error("[forms] RESEND_API_KEY is not set; cannot deliver submission.");
       return "unavailable";
     }
+    const { attachments, ...rest } = mail;
     console.info("[forms] (dev) RESEND_API_KEY not set. Would send:\n", {
       to,
       from,
-      ...mail,
+      ...rest,
+      attachments: attachments?.map((a) => ({
+        filename: a.filename,
+        bytes: a.content.length,
+      })),
     });
     return "logged";
   }
@@ -46,6 +52,7 @@ export async function sendMail(mail: OutgoingMail): Promise<MailResult> {
       replyTo: mail.replyTo,
       subject: mail.subject,
       text: mail.text,
+      ...(mail.attachments ? { attachments: mail.attachments } : {}),
     });
     if (error) {
       console.error("[forms] Resend rejected the message:", error.name);

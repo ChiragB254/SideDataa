@@ -8,3 +8,5 @@ test-results
 dist-release
 infra/terraform/.terraform
 infra/**/*.md
+infra/terraform/*.tfstate*
+infra/terraform/.terraform

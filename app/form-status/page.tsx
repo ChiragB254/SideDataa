@@ -35,6 +35,14 @@ const copy: Record<string, { title: string; body: string }> = {
     title: "We could not send your message.",
     body: `Please try again, or email ${site.email}.`,
   },
+  invalid_resume: {
+    title: "Your resume could not be accepted.",
+    body: "Go back and attach a PDF or DOCX file of 5 MB or less, then check the other fields and send again.",
+  },
+  too_large: {
+    title: "That file is too large.",
+    body: "The limit is 5 MB. Go back, attach a smaller PDF or DOCX file and send again.",
+  },
   bad_request: {
     title: "The request could not be read.",
     body: "Go back and try again.",

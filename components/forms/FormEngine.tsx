@@ -11,11 +11,14 @@ import {
 import Script from "next/script";
 import type { ZodType } from "zod";
 import { fieldErrors, type FieldErrors } from "@/lib/schemas";
+import { checkResumeMeta, resumeMessages } from "@/lib/resume";
 
 export type FieldConfig = {
   name: string;
   label: string;
-  type: "text" | "email" | "url" | "select" | "textarea";
+  type: "text" | "email" | "url" | "select" | "textarea" | "file";
+  /** Value for the file input `accept` attribute. */
+  accept?: string;
   required?: boolean;
   hint?: string;
   autoComplete?: string;
@@ -43,6 +46,7 @@ export function FormEngine({
   schema,
   fields,
   submitLabel,
+  note,
   successTitle,
   successBody,
 }: {
@@ -51,6 +55,7 @@ export function FormEngine({
   schema: ZodType;
   fields: FieldConfig[];
   submitLabel: string;
+  note?: string;
   successTitle: string;
   successBody: string;
 }) {
@@ -65,18 +70,48 @@ export function FormEngine({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [status, setStatus] = useState<Status>("idle");
   const [serverMessage, setServerMessage] = useState("");
+  // Chosen file per file field: a polite status line and an immediate error.
+  const [picked, setPicked] = useState<Record<string, { note: string; error: string }>>(
+    {},
+  );
+  const [summaryTick, setSummaryTick] = useState(0);
   const summaryRef = useRef<HTMLDivElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | undefined>(undefined);
 
+  const hasFile = fields.some((f) => f.type === "file");
   const errorKeys = fields.filter((f) => errors[f.name]).map((f) => f.name);
   const idOf = (name: string) => `${uid}-${name}`;
 
+  // Focus the summary only after a submit attempt, not when a file is chosen.
   useEffect(() => {
-    if (errorKeys.length > 0) summaryRef.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [errors]);
+    if (summaryTick > 0) summaryRef.current?.focus();
+  }, [summaryTick]);
+
+  function onFileChange(name: string, file: File | undefined) {
+    setErrors((prev) => {
+      if (!prev[name]) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    if (!file) {
+      setPicked((p) => ({ ...p, [name]: { note: "", error: "" } }));
+      return;
+    }
+    const check = checkResumeMeta(file);
+    const size =
+      file.size >= 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(file.size / 1024))} KB`;
+    setPicked((p) => ({
+      ...p,
+      [name]: check.ok
+        ? { note: `Selected: ${file.name} (${size})`, error: "" }
+        : { note: "", error: check.message },
+    }));
+  }
 
   useEffect(() => {
     if (status === "sent") successRef.current?.focus();
@@ -109,10 +144,24 @@ export function FormEngine({
     });
 
     const parsed = schema.safeParse(data);
-    if (!parsed.success) {
-      setErrors(fieldErrors(parsed.error));
+    const found: FieldErrors = parsed.success ? {} : fieldErrors(parsed.error);
+    const fileFields = fields.filter((f) => f.type === "file");
+    for (const f of fileFields) {
+      const file = form.elements.namedItem(f.name);
+      const chosen =
+        file instanceof HTMLInputElement ? (file.files?.[0] ?? undefined) : undefined;
+      if (!chosen) {
+        if (f.required) found[f.name] = resumeMessages.missing;
+      } else {
+        const check = checkResumeMeta(chosen);
+        if (!check.ok) found[f.name] = check.message;
+      }
+    }
+    if (Object.keys(found).length > 0) {
+      setErrors(found);
       setStatus("idle");
       setServerMessage("");
+      setSummaryTick((t) => t + 1);
       return;
     }
     setErrors({});
@@ -120,11 +169,21 @@ export function FormEngine({
     setStatus("submitting");
 
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(data),
-      });
+      // Files go as multipart (the browser sets the boundary); other forms as JSON.
+      const res = await fetch(
+        endpoint,
+        fileFields.length > 0
+          ? {
+              method: "POST",
+              headers: { Accept: "application/json" },
+              body: new FormData(form),
+            }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: JSON.stringify(data),
+            },
+      );
       const json = (await res.json().catch(() => null)) as
         | { ok: true }
         | { ok: false; message?: string; errors?: Record<string, string> }
@@ -133,7 +192,10 @@ export function FormEngine({
         setStatus("sent");
         return;
       }
-      if (json && !json.ok && json.errors) setErrors(json.errors);
+      if (json && !json.ok && json.errors) {
+        setErrors(json.errors);
+        setSummaryTick((t) => t + 1);
+      }
       setServerMessage(
         (json && !json.ok && json.message) ||
           "We could not send your message. Please try again, or email support@sidedataa.com.",
@@ -167,6 +229,7 @@ export function FormEngine({
     <form
       action={endpoint}
       method="post"
+      encType={hasFile ? "multipart/form-data" : undefined}
       noValidate={hydrated}
       onSubmit={onSubmit}
       aria-label={kind === "contact" ? "Contact form" : "Application form"}
@@ -203,9 +266,14 @@ export function FormEngine({
 
       {fields.map((f) => {
         const id = idOf(f.name);
-        const err = errors[f.name];
+        const pickedState = picked[f.name];
+        const err = errors[f.name] || pickedState?.error || "";
         const describedBy =
-          [f.hint ? `${id}-hint` : "", err ? `${id}-error` : ""]
+          [
+            f.hint ? `${id}-hint` : "",
+            pickedState?.note ? `${id}-picked` : "",
+            err ? `${id}-error` : "",
+          ]
             .filter(Boolean)
             .join(" ") || undefined;
         const common = {
@@ -242,6 +310,23 @@ export function FormEngine({
                   </option>
                 ))}
               </select>
+            ) : f.type === "file" ? (
+              <>
+                <input
+                  {...common}
+                  className="file-control"
+                  type="file"
+                  accept={f.accept}
+                  onChange={(e) => onFileChange(f.name, e.currentTarget.files?.[0])}
+                />
+                <p
+                  id={`${id}-picked`}
+                  role="status"
+                  className="mt-1.5 text-sm text-ink-soft"
+                >
+                  {pickedState?.note}
+                </p>
+              </>
             ) : f.type === "textarea" ? (
               <textarea {...common} rows={f.rows ?? 6} />
             ) : (
@@ -284,6 +369,8 @@ export function FormEngine({
           {serverMessage}
         </p>
       )}
+
+      {note ? <p className="text-ink-soft">{note}</p> : null}
 
       <div className="flex flex-wrap items-center gap-4">
         <button type="submit" className="btn" disabled={status === "submitting"}>

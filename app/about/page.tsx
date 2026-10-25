@@ -99,15 +99,14 @@ export default function AboutPage() {
       <Row
         id="people"
         label="People"
-        heading={<RowTitle id="people">Learning is part of the job.</RowTitle>}
+        heading={<RowTitle id="people">Unpaid internships in India.</RowTitle>}
       >
         <div className="prose-copy measure text-ink-soft">
-          {/* TODO(owner): confirm students, mentorship, review and feedback claims. */}
+          {/* TODO(owner): confirm the student and mentorship wording; add detail about the work or feedback only if you will provide it. */}
           <p>
-            We bring in students and early-career people to work on real projects
-            alongside experienced engineers, with mentorship, code review and written
-            feedback. It makes our own standards clearer, and it gives people work they
-            can point to.
+            We offer unpaid internships to students and early-career people. They run in
+            India under a joint venture between {site.name} and Right Click Orbit (India),
+            and include mentorship.
           </p>
           <p>
             If that interests you, see <Link href="/careers">careers</Link>.

@@ -38,7 +38,7 @@ export function SiteHeader() {
 
   return (
     <header className="relative border-b border-rule bg-paper">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3 sm:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-4 px-5 py-3 sm:px-8">
         <Link href="/" className="-ml-1 inline-flex min-h-11 items-center px-1">
           <Logo />
         </Link>

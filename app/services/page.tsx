@@ -1,5 +1,5 @@
 import { Container, Row, RowTitle } from "@/components/Container";
-import { ServiceList } from "@/components/ServiceList";
+import { ServiceCards } from "@/components/ServiceCards";
 import { CtaBand } from "@/components/CtaBand";
 import { Steps } from "@/components/Steps";
 import { howWeWork } from "@/content/work";
@@ -30,6 +30,7 @@ export default function ServicesPage() {
       </section>
       <Row
         id="list"
+        tone="tint"
         label="All services"
         heading={
           <h2 id="list-title" className="sr-only">
@@ -37,7 +38,7 @@ export default function ServicesPage() {
           </h2>
         }
       >
-        <ServiceList />
+        <ServiceCards />
       </Row>
       <Row
         id="process"
