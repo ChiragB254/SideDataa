@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { tinyDocx, tinyPdf } from "../fixtures/files";
+import { tinyPdf } from "../fixtures/files";
+import { RESUME_ACCEPT, RESUME_HINT, resumeMessages } from "../../lib/resume";
 
 const routes = [
   "/",
@@ -349,10 +350,10 @@ test.describe("careers resume upload", () => {
     await page.goto("/careers");
     const input = page.getByLabel(/^Resume/);
     await expect(input).toHaveAttribute("type", "file");
-    await expect(input).toHaveAttribute("accept", /\.pdf,\.docx/);
+    await expect(input).toHaveAttribute("accept", RESUME_ACCEPT);
     await expect(input).toHaveAttribute("required", "");
     await expect(input).toHaveAttribute("aria-describedby", /hint/);
-    await expect(page.getByText("PDF or DOCX, up to 5 MB.")).toBeVisible();
+    await expect(page.getByText(RESUME_HINT)).toBeVisible();
     const box = await input.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   });
@@ -379,7 +380,7 @@ test.describe("careers resume upload", () => {
       mimeType: "text/plain",
       buffer: Buffer.from("hello"),
     });
-    await expect(page.getByText("Resumes must be a PDF or DOCX file.")).toBeVisible();
+    await expect(page.getByText(resumeMessages.type)).toBeVisible();
     await expect(input).toHaveAttribute("aria-invalid", "true");
     await input.setInputFiles(pdf());
     await expect(page.getByText("Selected: cv.pdf (")).toBeVisible();
@@ -488,8 +489,13 @@ test.describe("careers resume upload", () => {
     await ctx.close();
   });
 
-  test("docx fixture is a real zip", () => {
-    const b = tinyDocx();
-    expect([b[0], b[1], b[2], b[3]]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+  test("a DOCX file is rejected: resumes are PDF only", async ({ page }) => {
+    await page.goto("/careers");
+    await page.getByLabel(/^Resume/).setInputFiles({
+      name: "cv.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    });
+    await expect(page.getByText("Resumes must be a PDF file.")).toBeVisible();
   });
 });

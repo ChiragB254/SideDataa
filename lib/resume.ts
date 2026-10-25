@@ -3,8 +3,8 @@
  * decompressed. Shared by the browser (type and size only) and the API route
  * (full check including content signatures).
  *
- * NOT checked: viruses, macros or scripts inside a DOCX, or malicious PDFs.
- * A file that passes is a PDF or a ZIP that looks like a Word document. It is
+ * NOT checked: viruses or malicious PDFs (scripts, links, exploits).
+ * A file that passes is a file that starts like a PDF. It is
  * emailed to the owner, who should open attachments in a safe viewer.
  */
 
@@ -13,23 +13,38 @@ export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 /** Whole request body cap: the file plus form fields and multipart framing. */
 export const APPLY_MAX_BODY_BYTES = RESUME_MAX_BYTES + 512 * 1024;
 
-export const RESUME_ACCEPT =
-  ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export type ResumeExt = "pdf";
+
+/**
+ * The ONE place that decides which resume types are accepted. Resumes are PDF only
+ * (owner decision). To allow another type, extend ResumeExt and TYPE_INFO and add a
+ * content check in validateResume. The accept attribute, hint,
+ * error messages, form note, privacy text and checks all derive from it.
+ */
+export const RESUME_TYPES: readonly ResumeExt[] = ["pdf"];
+
+const TYPE_INFO: Record<ResumeExt, { mime: string; label: string }> = {
+  pdf: { mime: "application/pdf", label: "PDF" },
+};
+
+/** "PDF". */
+export const RESUME_LABEL = RESUME_TYPES.map((t) => TYPE_INFO[t].label).join(" or ");
+/** "a PDF file". */
+export const RESUME_FILE_PHRASE = `a ${RESUME_LABEL} file`;
+export const RESUME_ACCEPT = [
+  ...RESUME_TYPES.map((t) => `.${t}`),
+  ...RESUME_TYPES.map((t) => TYPE_INFO[t].mime),
+].join(",");
+export const RESUME_HINT = `${RESUME_LABEL}, up to 5 MB.`;
+export const RESUME_NOTE = `Attach your resume as ${RESUME_FILE_PHRASE}.`;
 
 export const resumeMessages = {
   missing: "Attach your resume.",
-  type: "Resumes must be a PDF or DOCX file.",
+  type: `Resumes must be a ${RESUME_LABEL} file.`,
   tooLarge: "The file is too large. The limit is 5 MB.",
   empty: "That file looks empty.",
-  content:
-    "That file does not look like a valid PDF or DOCX. Check it opens, then try again.",
+  content: `That file does not look like a valid ${RESUME_LABEL} file. Check it opens, then try again.`,
 } as const;
-
-const TYPES = {
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-} as const;
-export type ResumeExt = keyof typeof TYPES;
 
 /** Inner extensions that make a name like "resume.exe.pdf" suspicious. */
 const RISKY_INNER = new Set([
@@ -71,9 +86,9 @@ function extensionOf(name: string): ResumeExt | null {
   const parts = base.toLowerCase().split(".");
   if (parts.length < 2) return null;
   const ext = parts[parts.length - 1] as string;
-  if (ext !== "pdf" && ext !== "docx") return null;
+  if (!(RESUME_TYPES as readonly string[]).includes(ext)) return null;
   if (parts.slice(1, -1).some((p) => RISKY_INNER.has(p))) return null;
-  return ext;
+  return ext as ResumeExt;
 }
 
 /** Cheap checks usable in the browser: name, extension and size. */
@@ -96,48 +111,6 @@ function isPdf(b: Uint8Array): boolean {
   return startsWith(b, [0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
 }
 
-/**
- * DOCX is a ZIP. Read only the end-of-central-directory record and the entry
- * names in the central directory; require "[Content_Types].xml" and at least
- * one "word/" entry. Nothing is decompressed.
- */
-function isDocx(b: Uint8Array): boolean {
-  if (!startsWith(b, [0x50, 0x4b, 0x03, 0x04])) return false; // PK\x03\x04
-  const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  // EOCD is within the last 22 + 65535 bytes.
-  let eocd = -1;
-  for (let i = b.length - 22; i >= Math.max(0, b.length - 22 - 65535); i--) {
-    if (view.getUint32(i, true) === 0x06054b50) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) return false;
-  const entries = view.getUint16(eocd + 10, true);
-  const cdSize = view.getUint32(eocd + 12, true);
-  const cdOffset = view.getUint32(eocd + 16, true);
-  if (cdOffset + cdSize > eocd || entries === 0 || entries > 20000) return false;
-
-  let pos = cdOffset;
-  let hasTypes = false;
-  let hasWord = false;
-  const decoder = new TextDecoder("utf-8");
-  for (let n = 0; n < entries; n++) {
-    if (pos + 46 > cdOffset + cdSize || view.getUint32(pos, true) !== 0x02014b50) {
-      return false;
-    }
-    const nameLen = view.getUint16(pos + 28, true);
-    const extraLen = view.getUint16(pos + 30, true);
-    const commentLen = view.getUint16(pos + 32, true);
-    if (pos + 46 + nameLen > cdOffset + cdSize) return false;
-    const name = decoder.decode(b.subarray(pos + 46, pos + 46 + nameLen));
-    if (name === "[Content_Types].xml") hasTypes = true;
-    if (name.startsWith("word/")) hasWord = true;
-    pos += 46 + nameLen + extraLen + commentLen;
-  }
-  return hasTypes && hasWord;
-}
-
 export type ResumeCheck =
   | {
       ok: true;
@@ -152,10 +125,11 @@ export type ResumeCheck =
 /** Safe attachment name: basename only, [A-Za-z0-9._ -], max 80, validated extension. */
 export function safeFilename(name: string, ext: ResumeExt): string {
   const base = (name.split(/[\\/]/).pop() ?? "").replace(/\.[^.]*$/, "");
+  // Every dot except the final extension dot becomes "_", so a name such as
+  // "a.exe .pdf" can never end up as "a.exe.pdf".
   const cleaned = base
-    .replace(/[^A-Za-z0-9._ -]+/g, "_")
-    .replace(/\.{2,}/g, ".")
-    .replace(/^[.\s-]+|[.\s]+$/g, "")
+    .replace(/[^A-Za-z0-9 _-]+/g, "_")
+    .replace(/^[_\s-]+|[_\s]+$/g, "")
     .slice(0, 80 - ext.length - 1);
   return `${cleaned || "resume"}.${ext}`;
 }
@@ -173,13 +147,13 @@ export function validateResume(
     }
     return meta;
   }
-  const good = meta.ext === "pdf" ? isPdf(file.bytes) : isDocx(file.bytes);
+  const good = isPdf(file.bytes);
   if (!good) return { ok: false, message: resumeMessages.content };
   return {
     ok: true,
     ext: meta.ext,
     filename: safeFilename(file.name, meta.ext),
-    contentType: TYPES[meta.ext],
+    contentType: TYPE_INFO[meta.ext].mime,
     size: file.bytes.byteLength,
     bytes: file.bytes,
   };

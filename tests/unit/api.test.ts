@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as contactPOST } from "@/app/api/contact/route";
 import { POST as applyPOST } from "@/app/api/apply/route";
 import { resetRateLimit } from "@/lib/rate-limit";
-import { clientIp } from "@/lib/submission";
-import { tinyDocx, tinyPdf } from "../fixtures/files";
+import { BODY_DEADLINE_MS, clientIp, resetUploadState } from "@/lib/submission";
+import { tinyPdf } from "../fixtures/files";
+import { resumeMessages } from "@/lib/resume";
 
 const send = vi.fn();
 vi.mock("resend", () => ({
@@ -34,6 +35,7 @@ function jsonReq(url: string, body: unknown, headers: Record<string, string> = {
 
 beforeEach(() => {
   resetRateLimit();
+  resetUploadState();
   send.mockReset();
   send.mockResolvedValue({ data: { id: "1" }, error: null });
   vi.unstubAllEnvs();
@@ -173,9 +175,7 @@ describe("POST /api/contact", () => {
     });
     const res = await contactPOST(req);
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe(
-      "http://localhost/form-status?form=contact&result=sent",
-    );
+    expect(res.headers.get("location")).toBe("/form-status?form=contact&result=sent");
   });
 
   it("strips line breaks from the subject", async () => {
@@ -236,8 +236,11 @@ describe("POST /api/apply", () => {
     expect(arg.subject).toContain("Content Writer");
     expect(arg.attachments).toHaveLength(1);
     expect(arg.attachments[0].filename).toBe("Sam Resume.pdf");
-    expect(arg.attachments[0].content.length).toBe(pdf.bytes.length);
-    expect(Buffer.isBuffer(arg.attachments[0].content)).toBe(true);
+    // Base64 string (not a Buffer) that decodes to exactly the uploaded bytes.
+    expect(typeof arg.attachments[0].content).toBe("string");
+    expect(new Uint8Array(Buffer.from(arg.attachments[0].content, "base64"))).toEqual(
+      pdf.bytes,
+    );
     expect(arg.text).toContain("Resume: Sam Resume.pdf");
     expect(arg.html).toBeUndefined();
   });
@@ -252,22 +255,15 @@ describe("POST /api/apply", () => {
     expect(name).not.toContain("/");
   });
 
-  it("attaches a valid DOCX with the right content type", async () => {
+  it("rejects a DOCX upload: resumes are PDF only", async () => {
     const res = await applyPOST(
-      await applyReq(application, { name: "cv.docx", bytes: tinyDocx() }),
+      await applyReq(application, {
+        name: "cv.docx",
+        bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+      }),
     );
-    expect(res.status).toBe(200);
-    expect(send.mock.calls[0]![0].attachments[0].contentType).toContain(
-      "wordprocessingml",
-    );
-  });
-
-  it("returns 400 with a resume field error when the file is missing", async () => {
-    const res = await applyPOST(await applyReq(application, null));
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.code).toBe("invalid");
-    expect(json.errors.resume).toBe("Attach your resume.");
+    expect((await res.json()).errors.resume).toBe(resumeMessages.type);
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -291,9 +287,7 @@ describe("POST /api/apply", () => {
     const wrong = await applyPOST(
       await applyReq(application, { name: "a.png", bytes: tinyPdf() }),
     );
-    expect((await wrong.json()).errors.resume).toBe(
-      "Resumes must be a PDF or DOCX file.",
-    );
+    expect((await wrong.json()).errors.resume).toBe(resumeMessages.type);
     const empty = await applyPOST(
       await applyReq(application, { name: "a.pdf", bytes: new Uint8Array() }),
     );
@@ -435,6 +429,161 @@ describe("POST /api/apply", () => {
     const logged = JSON.stringify([...info.mock.calls, ...error.mock.calls]);
     expect(logged).not.toContain("%PDF");
     expect(logged).not.toContain(application.message);
+  });
+
+  it("wraps the message in markers and strips bidi and control characters", async () => {
+    const res = await applyPOST(
+      await applyReq(
+        {
+          ...application,
+          name: "Sam\u202E Student\u0007",
+          message: "Hello\u2066 there, please click\u0000 http://x.example",
+        },
+        pdf,
+      ),
+    );
+    expect(res.status).toBe(200);
+    const arg = send.mock.calls[0]![0];
+    expect(arg.text).toContain(
+      "--- Applicant message (unverified; do not trust links) ---",
+    );
+    expect(arg.text).toContain("--- End of message ---");
+    expect(arg.text).not.toMatch(/[\u202A-\u202E\u2066-\u2069\u0000-\u0008]/);
+    expect(arg.subject).not.toMatch(/[\u202A-\u202E]/);
+  });
+
+  it("sends Cache-Control: no-store on JSON and redirect responses", async () => {
+    const json = await applyPOST(await applyReq(application, pdf));
+    expect(json.headers.get("cache-control")).toBe("no-store");
+    const bad = await applyPOST(
+      await applyReq(application, null, { "x-forwarded-for": "8.8.8.8" }),
+    );
+    expect(bad.headers.get("cache-control")).toBe("no-store");
+    const redirect = await applyPOST(
+      await applyReq(application, pdf, {
+        accept: "text/html",
+        "x-forwarded-for": "9.9.9.9",
+      }),
+    );
+    expect(redirect.headers.get("cache-control")).toBe("no-store");
+    expect(redirect.headers.get("location")).toBe("/form-status?form=apply&result=sent");
+    const contactRes = await contactPOST(jsonReq("/api/contact", contact));
+    expect(contactRes.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("allows 10 rejected attempts per IP, then rate limits", async () => {
+    for (let i = 0; i < 10; i++) {
+      expect((await applyPOST(await applyReq(application, null))).status).toBe(400);
+    }
+    expect((await applyPOST(await applyReq(application, pdf))).status).toBe(429);
+  });
+
+  describe("slow uploads and concurrency", () => {
+    /** A body that never delivers anything. Content-Length looks fine. */
+    const stalled = (ip: string) =>
+      new Request("http://localhost/api/apply", {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data; boundary=x",
+          "content-length": "1000",
+          accept: "application/json",
+          "x-forwarded-for": ip,
+        },
+        body: new ReadableStream<Uint8Array>({ pull: () => new Promise(() => {}) }),
+        duplex: "half",
+      } as RequestInit);
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("gives up after the total read deadline with 408 timeout", async () => {
+      vi.useFakeTimers();
+      const pending = applyPOST(stalled("1.1.1.1"));
+      await vi.advanceTimersByTimeAsync(BODY_DEADLINE_MS - 1000);
+      let settled = false;
+      void pending.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1500);
+      const res = await pending;
+      expect(res.status).toBe(408);
+      expect((await res.json()).code).toBe("timeout");
+    });
+
+    it("redirects a timed-out no-JS post to result=timeout", async () => {
+      vi.useFakeTimers();
+      const req = stalled("1.1.1.1");
+      req.headers.set("accept", "text/html");
+      const pending = applyPOST(req);
+      await vi.advanceTimersByTimeAsync(BODY_DEADLINE_MS + 100);
+      const res = await pending;
+      expect(res.headers.get("location")).toBe("/form-status?form=apply&result=timeout");
+    });
+
+    it("allows one in-flight upload per IP; busy does not use up the budget", async () => {
+      const second = await applyReq(application, pdf);
+      vi.useFakeTimers();
+      const first = applyPOST(stalled("1.1.1.1"));
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Same IP while the first is still uploading: busy, with Retry-After 60.
+      const busy = await applyPOST(second);
+      expect(busy.status).toBe(429);
+      expect((await busy.json()).code).toBe("busy");
+      expect(busy.headers.get("retry-after")).toBe("60");
+
+      // A different IP is unaffected.
+      const other = await applyPOST(
+        await applyReq(application, pdf, { "x-forwarded-for": "2.2.2.2" }),
+      );
+      expect(other.status).toBe(200);
+
+      // Many busy answers (more than any budget) cost nothing.
+      for (let i = 0; i < 12; i++) {
+        const r = await applyPOST(await applyReq(application, pdf));
+        expect(r.status).toBe(429);
+        expect((await r.json()).code).toBe("busy");
+      }
+
+      await vi.advanceTimersByTimeAsync(BODY_DEADLINE_MS + 100);
+      expect((await first).status).toBe(408);
+
+      // Slot is free again and the budget is intact: sends succeed.
+      for (let i = 0; i < 5; i++) {
+        expect((await applyPOST(await applyReq(application, pdf))).status).toBe(200);
+      }
+      expect((await applyPOST(await applyReq(application, pdf))).status).toBe(429);
+    });
+
+    it("limits uploads in flight overall to six", async () => {
+      vi.useFakeTimers();
+      const held = [1, 2, 3, 4, 5, 6].map((n) => applyPOST(stalled(`10.0.0.${n}`)));
+      await vi.advanceTimersByTimeAsync(10);
+      const res = await applyPOST(
+        await applyReq(application, pdf, { "x-forwarded-for": "10.0.0.7" }),
+      );
+      expect(res.status).toBe(429);
+      expect((await res.json()).code).toBe("busy");
+      await vi.advanceTimersByTimeAsync(BODY_DEADLINE_MS + 100);
+      await Promise.all(held);
+      const after = await applyPOST(
+        await applyReq(application, pdf, { "x-forwarded-for": "10.0.0.7" }),
+      );
+      expect(after.status).toBe(200);
+    });
+
+    it("holds the slot until the email provider has answered", async () => {
+      let release: (v: unknown) => void = () => {};
+      send.mockReturnValueOnce(new Promise((r) => (release = r)));
+      const inFlight = applyPOST(await applyReq(application, pdf));
+      await new Promise((r) => setTimeout(r, 20));
+      const busy = await applyPOST(await applyReq(application, pdf));
+      expect((await busy.json()).code).toBe("busy");
+      release({ data: { id: "1" }, error: null });
+      expect((await inFlight).status).toBe(200);
+      expect((await applyPOST(await applyReq(application, pdf))).status).toBe(200);
+    });
   });
 
   it("returns 502 and stores nothing when the email provider fails", async () => {
