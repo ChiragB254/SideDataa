@@ -3,7 +3,7 @@
 import { FormEngine, type FieldConfig } from "./FormEngine";
 import { applySchema } from "@/lib/schemas";
 import { roleOptions } from "@/content/slugs";
-import { RESUME_ACCEPT } from "@/lib/resume";
+import { RESUME_ACCEPT, RESUME_HINT, RESUME_NOTE } from "@/lib/resume";
 
 const fields: FieldConfig[] = [
   { name: "name", label: "Name", type: "text", required: true, autoComplete: "name" },
@@ -37,7 +37,7 @@ const fields: FieldConfig[] = [
     type: "file",
     required: true,
     accept: RESUME_ACCEPT,
-    hint: "PDF or DOCX, up to 5 MB.",
+    hint: RESUME_HINT,
   },
 ];
 
@@ -49,7 +49,7 @@ export function ApplyForm() {
       schema={applySchema}
       fields={fields}
       submitLabel="Send application"
-      note="Attach your resume as a PDF or DOCX file. These internships are unpaid."
+      note={`${RESUME_NOTE} These internships are unpaid.`}
       successTitle="Application received"
       successBody="Thanks, we have received your application."
     />

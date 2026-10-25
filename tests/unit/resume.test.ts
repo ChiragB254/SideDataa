@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   checkResumeMeta,
   RESUME_MAX_BYTES,
+  RESUME_TYPES,
   resumeMessages,
   safeFilename,
   validateResume,
 } from "@/lib/resume";
 import { makeZip, tinyDocx, tinyPdf } from "../fixtures/files";
 
+const DOCX = RESUME_TYPES.includes("docx");
 const msg = (r: ReturnType<typeof validateResume>) => (r.ok ? "ok" : r.message);
 
 describe("validateResume", () => {
@@ -20,7 +22,7 @@ describe("validateResume", () => {
     }
   });
 
-  it("accepts a valid DOCX, case-insensitive extension", () => {
+  it.runIf(DOCX)("accepts a valid DOCX, case-insensitive extension", () => {
     const r = validateResume({ name: "CV.DOCX", bytes: tinyDocx() });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.filename).toBe("CV.docx");
@@ -47,17 +49,23 @@ describe("validateResume", () => {
     );
   });
 
+  it.runIf(!DOCX)("rejects DOCX when only PDF is accepted", () => {
+    expect(msg(validateResume({ name: "cv.docx", bytes: tinyDocx() }))).toBe(
+      resumeMessages.type,
+    );
+  });
+
   it("rejects wrong magic bytes (an .exe renamed .pdf)", () => {
     const exe = new TextEncoder().encode("MZ\x90\x00 this is not a pdf");
     expect(msg(validateResume({ name: "resume.pdf", bytes: exe }))).toBe(
       resumeMessages.content,
     );
     expect(msg(validateResume({ name: "resume.docx", bytes: tinyPdf() }))).toBe(
-      resumeMessages.content,
+      DOCX ? resumeMessages.content : resumeMessages.type,
     );
   });
 
-  it("rejects a ZIP that is not a Word document", () => {
+  it.runIf(DOCX)("rejects a ZIP that is not a Word document", () => {
     const zip = makeZip({ "readme.txt": "hello" });
     expect(msg(validateResume({ name: "resume.docx", bytes: zip }))).toBe(
       resumeMessages.content,

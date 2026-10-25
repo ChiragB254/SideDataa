@@ -4,6 +4,7 @@ import { POST as applyPOST } from "@/app/api/apply/route";
 import { resetRateLimit } from "@/lib/rate-limit";
 import { BODY_DEADLINE_MS, clientIp, resetUploadState } from "@/lib/submission";
 import { tinyDocx, tinyPdf } from "../fixtures/files";
+import { RESUME_TYPES, resumeMessages } from "@/lib/resume";
 
 const send = vi.fn();
 vi.mock("resend", () => ({
@@ -254,15 +255,18 @@ describe("POST /api/apply", () => {
     expect(name).not.toContain("/");
   });
 
-  it("attaches a valid DOCX with the right content type", async () => {
-    const res = await applyPOST(
-      await applyReq(application, { name: "cv.docx", bytes: tinyDocx() }),
-    );
-    expect(res.status).toBe(200);
-    expect(send.mock.calls[0]![0].attachments[0].contentType).toContain(
-      "wordprocessingml",
-    );
-  });
+  it.runIf(RESUME_TYPES.includes("docx"))(
+    "attaches a valid DOCX with the right content type",
+    async () => {
+      const res = await applyPOST(
+        await applyReq(application, { name: "cv.docx", bytes: tinyDocx() }),
+      );
+      expect(res.status).toBe(200);
+      expect(send.mock.calls[0]![0].attachments[0].contentType).toContain(
+        "wordprocessingml",
+      );
+    },
+  );
 
   it("returns 400 with a resume field error when the file is missing", async () => {
     const res = await applyPOST(await applyReq(application, null));
@@ -293,9 +297,7 @@ describe("POST /api/apply", () => {
     const wrong = await applyPOST(
       await applyReq(application, { name: "a.png", bytes: tinyPdf() }),
     );
-    expect((await wrong.json()).errors.resume).toBe(
-      "Resumes must be a PDF or DOCX file.",
-    );
+    expect((await wrong.json()).errors.resume).toBe(resumeMessages.type);
     const empty = await applyPOST(
       await applyReq(application, { name: "a.pdf", bytes: new Uint8Array() }),
     );

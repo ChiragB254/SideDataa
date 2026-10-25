@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Container } from "@/components/Container";
 import { pageMetadata } from "@/lib/metadata";
 import { site } from "@/lib/site";
+import { RESUME_FILE_PHRASE } from "@/lib/resume";
 
 export const metadata = pageMetadata({
   title: "Form status",
@@ -37,11 +38,19 @@ const copy: Record<string, { title: string; body: string }> = {
   },
   invalid_resume: {
     title: "Your resume could not be accepted.",
-    body: "Go back and attach a PDF or DOCX file of 5 MB or less, then check the other fields and send again.",
+    body: `Go back and attach ${RESUME_FILE_PHRASE} of 5 MB or less, then check the other fields and send again.`,
   },
   too_large: {
     title: "That file is too large.",
-    body: "The limit is 5 MB. Go back, attach a smaller PDF or DOCX file and send again.",
+    body: "The limit is 5 MB. Go back, attach a smaller file and send again.",
+  },
+  busy: {
+    title: "The form is busy.",
+    body: "Please try again in a minute.",
+  },
+  timeout: {
+    title: "The upload took too long.",
+    body: "Check your connection, go back and try again.",
   },
   bad_request: {
     title: "The request could not be read.",
