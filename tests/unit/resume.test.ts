@@ -107,13 +107,18 @@ describe("validateResume", () => {
 
 describe("safeFilename", () => {
   it("keeps the basename only and strips unsafe characters", () => {
-    expect(safeFilename("../../etc/passwd/Résumé <1>.pdf", "pdf")).toBe("R_sum_ _1_.pdf");
+    expect(safeFilename("../../etc/passwd/Résumé <1>.pdf", "pdf")).toBe("R_sum_ _1.pdf");
     expect(safeFilename("C:\\Users\\me\\cv.docx", "docx")).toBe("cv.docx");
   });
   it("limits length to 80 and falls back to resume", () => {
     expect(safeFilename(`${"a".repeat(200)}.pdf`, "pdf").length).toBeLessThanOrEqual(80);
     expect(safeFilename(".pdf", "pdf")).toBe("resume.pdf");
     expect(safeFilename("  .. .pdf", "pdf")).toBe("resume.pdf");
+  });
+  it("turns every inner dot into an underscore", () => {
+    expect(safeFilename("a.exe .pdf", "pdf")).toBe("a_exe.pdf");
+    expect(safeFilename("resume.v2.final.pdf", "pdf")).toBe("resume_v2_final.pdf");
+    expect(safeFilename("x..y.pdf", "pdf")).not.toMatch(/\..*\./);
   });
   it("forces the validated extension", () => {
     expect(safeFilename("cv.exe", "pdf")).toBe("cv.pdf");

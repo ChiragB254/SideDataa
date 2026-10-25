@@ -1,5 +1,5 @@
 import { applySchema } from "@/lib/schemas";
-import { handleSubmission, oneLine } from "@/lib/submission";
+import { handleSubmission, oneLine, wrapMessage } from "@/lib/submission";
 import { APPLY_MAX_BODY_BYTES } from "@/lib/resume";
 import { roleOptions } from "@/content/slugs";
 
@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
         replyTo: d.email,
         text: [
           `Name: ${oneLine(d.name)}`,
-          `Email: ${d.email}`,
+          `Email: ${oneLine(d.email)}`,
           `Role: ${role}`,
           `Link: ${d.link ? oneLine(d.link) : "-"}`,
           "",
@@ -26,14 +26,18 @@ export async function POST(request: Request): Promise<Response> {
             ? `Resume: ${resume.filename} (${resume.ext.toUpperCase()}, ${Math.max(1, Math.round(resume.size / 1024))} KB), attached`
             : "Resume: not attached",
           "",
-          d.message,
+          wrapMessage("Applicant message", d.message),
         ].join("\n"),
         ...(resume
           ? {
               attachments: [
                 {
                   filename: resume.filename,
-                  content: Buffer.from(resume.bytes),
+                  content: Buffer.from(
+                    resume.bytes.buffer,
+                    resume.bytes.byteOffset,
+                    resume.bytes.byteLength,
+                  ).toString("base64"),
                   contentType: resume.contentType,
                 },
               ],

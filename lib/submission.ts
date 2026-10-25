@@ -1,6 +1,11 @@
 import type { ZodType } from "zod";
 import { fieldErrors } from "./schemas";
-import { checkRateLimit, SHARED_LIMIT } from "./rate-limit";
+import {
+  checkRateLimit,
+  peekRateLimit,
+  recordRateLimit,
+  SHARED_LIMIT,
+} from "./rate-limit";
 import { verifyTurnstile } from "./turnstile";
 import { sendMail, type OutgoingMail } from "./mail";
 import {
@@ -23,6 +28,8 @@ export type ApiResult =
         | "unavailable"
         | "failed"
         | "too_large"
+        | "busy"
+        | "timeout"
         | "bad_request";
       message: string;
       errors?: Record<string, string>;
@@ -31,9 +38,47 @@ export type ApiResult =
 /** Default cap for text-only forms (contact). The apply route passes its own. */
 const DEFAULT_MAX_BODY_BYTES = 40_000;
 
-/** Uploads being read at once. Bounds memory on top of the per-IP rate limit. */
-const MAX_CONCURRENT_UPLOADS = 6;
+/**
+ * Uploads being handled at once (reading, validating, sending): 6 in total and
+ * 1 per IP. A slot is held until the email has been handed to the provider.
+ */
+export const MAX_CONCURRENT_UPLOADS = 6;
+const uploadsByIp = new Map<string, number>();
 let uploadsInFlight = 0;
+
+/** Hard total time to receive a request body. */
+export const BODY_DEADLINE_MS = 45_000;
+
+/**
+ * Apply route budgets per IP per 10 minutes. Every accepted-for-reading
+ * attempt counts toward ATTEMPTS (so rejected files cost something), but only
+ * successful sends count toward SENDS, so successes stay capped at 5.
+ */
+const APPLY_ATTEMPTS = { max: 10, windowMs: 10 * 60 * 1000 } as const;
+const APPLY_SENDS = { max: 5, windowMs: 10 * 60 * 1000 } as const;
+
+/** Test helper. */
+export function resetUploadState(): void {
+  uploadsByIp.clear();
+  uploadsInFlight = 0;
+}
+
+function acquireUploadSlot(ip: string | null): boolean {
+  if (uploadsInFlight >= MAX_CONCURRENT_UPLOADS) return false;
+  if (ip && (uploadsByIp.get(ip) ?? 0) >= 1) return false;
+  uploadsInFlight++;
+  if (ip) uploadsByIp.set(ip, (uploadsByIp.get(ip) ?? 0) + 1);
+  return true;
+}
+
+function releaseUploadSlot(ip: string | null): void {
+  uploadsInFlight = Math.max(0, uploadsInFlight - 1);
+  if (ip) {
+    const n = (uploadsByIp.get(ip) ?? 1) - 1;
+    if (n <= 0) uploadsByIp.delete(ip);
+    else uploadsByIp.set(ip, n);
+  }
+}
 
 const messages = {
   invalid: "Some fields need attention. Check the highlighted fields and try again.",
@@ -45,6 +90,8 @@ const messages = {
   failed:
     "We could not send your message. Please try again, or email support@sidedataa.com.",
   too_large: "The file is too large. The limit is 5 MB.",
+  busy: "Please try again in a minute.",
+  timeout: "The upload took too long. Check your connection and try again.",
   bad_request: "The request could not be read.",
 } as const;
 
@@ -52,6 +99,8 @@ const statusFor = {
   invalid: 400,
   bad_request: 400,
   too_large: 413,
+  busy: 429,
+  timeout: 408,
   bot_check: 403,
   rate_limited: 429,
   unavailable: 503,
@@ -110,21 +159,28 @@ function sameOrigin(request: Request): boolean {
   }
 }
 
+const NO_STORE = { "Cache-Control": "no-store" } as const;
+
 function respond(request: Request, kind: FormKind, result: ApiResult): Response {
   if (wantsJson(request)) {
-    if (result.ok) return Response.json(result, { status: 200 });
-    const headers: HeadersInit =
-      result.code === "rate_limited" ? { "Retry-After": "600" } : {};
+    if (result.ok) return Response.json(result, { status: 200, headers: NO_STORE });
+    const headers: Record<string, string> = { ...NO_STORE };
+    if (result.code === "rate_limited") headers["Retry-After"] = "600";
+    if (result.code === "busy") headers["Retry-After"] = "60";
     return Response.json(result, { status: statusFor[result.code], headers });
   }
-  // Plain HTML form post (no JavaScript): redirect to a status page.
+  // Plain HTML form post (no JavaScript): redirect to a status page. The
+  // Location is relative so it stays correct behind a reverse proxy (the
+  // request URL there is the internal 127.0.0.1 address).
   const status = result.ok
     ? "sent"
     : result.code === "invalid" && result.errors?.resume
       ? "invalid_resume"
       : result.code;
-  const url = new URL(`/form-status?form=${kind}&result=${status}`, request.url);
-  return Response.redirect(url, 303);
+  return new Response(null, {
+    status: 303,
+    headers: { Location: `/form-status?form=${kind}&result=${status}`, ...NO_STORE },
+  });
 }
 
 type UploadedFile = { name: string; bytes: Uint8Array };
@@ -134,15 +190,16 @@ type ParsedBody = {
 };
 
 /**
- * Read at most `max` bytes. Returns "too_large" when the declared length is
- * over the cap (or missing, if `requireLength`) or when the stream exceeds it.
- * The stream cap does not trust Content-Length.
+ * Read at most `max` bytes, within BODY_DEADLINE_MS in total. Returns
+ * "too_large" when the declared length is over the cap (or missing, if
+ * `requireLength`) or when the stream exceeds it, and "timeout" when the
+ * deadline passes first. The stream cap does not trust Content-Length.
  */
 async function readBytes(
   request: Request,
   max: number,
   requireLength: boolean,
-): Promise<Uint8Array | "too_large"> {
+): Promise<Uint8Array | "too_large" | "timeout"> {
   const header = request.headers.get("content-length");
   if (requireLength && (header === null || !/^\d+$/.test(header))) return "too_large";
   if (Number(header ?? 0) > max) return "too_large";
@@ -150,15 +207,27 @@ async function readBytes(
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      await reader.cancel().catch(() => {});
-      return "too_large";
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    reader.cancel().catch(() => {});
+  }, BODY_DEADLINE_MS);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (timedOut) return "timeout";
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return "too_large";
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch {
+    return timedOut ? "timeout" : "too_large";
+  } finally {
+    clearTimeout(timer);
   }
   const out = new Uint8Array(total);
   let offset = 0;
@@ -232,58 +301,112 @@ export async function handleSubmission<
   if (!sameOrigin(request)) return fail("bad_request");
 
   const ip = clientIp(request.headers);
-  // Unknown IP: share one looser bucket so unattributable traffic cannot lock
-  // the whole site after five submissions, but is still capped.
-  const limit = ip
-    ? checkRateLimit(`${kind}:${ip}`)
-    : checkRateLimit(`${kind}:shared`, Date.now(), SHARED_LIMIT);
-  if (!limit.allowed) return fail("rate_limited");
 
-  if (upload && uploadsInFlight >= MAX_CONCURRENT_UPLOADS) return fail("rate_limited");
-  if (upload) uploadsInFlight++;
-  let read: Uint8Array | "too_large";
-  let body: ParsedBody | null = null;
-  try {
-    read = await readBytes(request, maxBody, upload);
-    if (read !== "too_large") {
-      body = await parseBody(read, request.headers.get("content-type") ?? "");
+  async function process(): Promise<Response> {
+    // Unknown IP: share one looser bucket so unattributable traffic cannot lock
+    // the whole site, but is still capped.
+    const bucket = ip ?? "shared";
+    if (upload) {
+      const sends = ip ? APPLY_SENDS : SHARED_LIMIT;
+      const attempts = ip ? APPLY_ATTEMPTS : SHARED_LIMIT;
+      if (!peekRateLimit(`${kind}-ok:${bucket}`, Date.now(), sends)) {
+        return fail("rate_limited");
+      }
+      if (!checkRateLimit(`${kind}:${bucket}`, Date.now(), attempts).allowed) {
+        return fail("rate_limited");
+      }
+    } else if (
+      !checkRateLimit(`${kind}:${bucket}`, Date.now(), ip ? undefined : SHARED_LIMIT)
+        .allowed
+    ) {
+      return fail("rate_limited");
     }
-  } finally {
-    if (upload) uploadsInFlight--;
-  }
-  if (read === "too_large") {
-    return upload
-      ? fail("too_large", { resume: resumeMessages.tooLarge })
-      : fail("bad_request");
-  }
-  if (!body) return fail("bad_request");
 
-  // Honeypot: real people never see or fill this field. Pretend it worked.
-  if (typeof body.fields.website === "string" && body.fields.website.trim() !== "") {
+    let read = await readBytes(request, maxBody, upload);
+    if (read === "timeout") return fail("timeout");
+    if (read === "too_large") {
+      return upload
+        ? fail("too_large", { resume: resumeMessages.tooLarge })
+        : fail("bad_request");
+    }
+    let body: ParsedBody | null = await parseBody(
+      read,
+      request.headers.get("content-type") ?? "",
+    );
+    read = new Uint8Array();
+    if (!body) return fail("bad_request");
+
+    // Honeypot: real people never see or fill this field. Pretend it worked.
+    if (typeof body.fields.website === "string" && body.fields.website.trim() !== "") {
+      return respond(request, kind, { ok: true });
+    }
+
+    const parsed = schema.safeParse(body.fields);
+    const errors: Record<string, string> = parsed.success
+      ? {}
+      : fieldErrors(parsed.error);
+    let resume: Extract<ResumeCheck, { ok: true }> | undefined;
+    if (upload) {
+      const check = validateResume(body.files.resume);
+      if (check.ok) resume = check;
+      else errors.resume = check.message;
+    }
+    // File and field errors are reported before any email or bot-check work.
+    if (!parsed.success || Object.keys(errors).length > 0) return fail("invalid", errors);
+
+    const bot = await verifyTurnstile(parsed.data["cf-turnstile-response"], ip);
+    if (bot === "failed") return fail("bot_check");
+
+    // Build the email, then drop every other reference to the file bytes so
+    // only the base64 copy inside `mail` stays alive while it is sent.
+    const mail = toMail(parsed.data, resume);
+    body = null;
+    resume = undefined;
+
+    const result = await sendMail(mail);
+    if (result === "unavailable") return fail("unavailable");
+    if (result === "failed") return fail("failed");
+    if (upload) recordRateLimit(`${kind}-ok:${bucket}`);
     return respond(request, kind, { ok: true });
   }
 
-  const parsed = schema.safeParse(body.fields);
-  const errors: Record<string, string> = parsed.success ? {} : fieldErrors(parsed.error);
-  let resume: Extract<ResumeCheck, { ok: true }> | undefined;
-  if (upload) {
-    const check = validateResume(body.files.resume);
-    if (check.ok) resume = check;
-    else errors.resume = check.message;
+  if (!upload) return process();
+  // One upload per IP and six in total. A busy answer does not cost any budget.
+  if (!acquireUploadSlot(ip)) return fail("busy");
+  try {
+    return await process();
+  } finally {
+    releaseUploadSlot(ip);
   }
-  // File and field errors are reported before any email or bot-check work.
-  if (!parsed.success || Object.keys(errors).length > 0) return fail("invalid", errors);
+}
 
-  const bot = await verifyTurnstile(parsed.data["cf-turnstile-response"], ip);
-  if (bot === "failed") return fail("bot_check");
+/** Remove control characters (keeping \n and \t if asked) and bidi controls. */
+const BIDI = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const CONTROLS_ALL = /[\u0000-\u001F\u007F-\u009F]/g;
+const CONTROLS_KEEP_NEWLINES = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 
-  const result = await sendMail(toMail(parsed.data, resume));
-  if (result === "unavailable") return fail("unavailable");
-  if (result === "failed") return fail("failed");
-  return respond(request, kind, { ok: true });
+/** Plain-text, multi-line user input: no control or bidi characters. */
+export function cleanText(value: string): string {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .replace(CONTROLS_KEEP_NEWLINES, "")
+    .replace(BIDI, "");
+}
+
+/** Wrap an applicant message so it is clearly separate from our own text. */
+export function wrapMessage(label: string, message: string): string {
+  return [
+    `--- ${label} (unverified; do not trust links) ---`,
+    cleanText(message),
+    "--- End of message ---",
+  ].join("\n");
 }
 
 /** Strip line breaks so user input cannot inject extra headers or subjects. */
 export function oneLine(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").trim();
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(CONTROLS_ALL, "")
+    .replace(BIDI, "")
+    .trim();
 }

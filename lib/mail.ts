@@ -4,7 +4,8 @@ export type OutgoingMail = {
   subject: string;
   text: string;
   replyTo: string;
-  attachments?: { filename: string; content: Buffer; contentType: string }[];
+  /** `content` is a base64 string: Resend's SDK would JSON-encode a Buffer as a huge number array. */
+  attachments?: { filename: string; content: string; contentType: string }[];
 };
 
 export type MailResult = "sent" | "logged" | "unavailable" | "failed";
@@ -38,7 +39,7 @@ export async function sendMail(mail: OutgoingMail): Promise<MailResult> {
       ...rest,
       attachments: attachments?.map((a) => ({
         filename: a.filename,
-        bytes: a.content.length,
+        base64Chars: a.content.length,
       })),
     });
     return "logged";

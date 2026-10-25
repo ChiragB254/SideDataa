@@ -1,5 +1,5 @@
 import { contactSchema } from "@/lib/schemas";
-import { handleSubmission, oneLine } from "@/lib/submission";
+import { handleSubmission, oneLine, wrapMessage } from "@/lib/submission";
 import { serviceOptions } from "@/content/slugs";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,11 @@ export async function POST(request: Request): Promise<Response> {
         replyTo: d.email,
         text: [
           `Name: ${oneLine(d.name)}`,
-          `Email: ${d.email}`,
+          `Email: ${oneLine(d.email)}`,
           `Company: ${d.company ? oneLine(d.company) : "-"}`,
           `Service interest: ${service}`,
           "",
-          d.message,
+          wrapMessage("Sender message", d.message),
         ].join("\n"),
       };
     },

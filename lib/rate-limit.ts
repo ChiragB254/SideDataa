@@ -38,6 +38,23 @@ export function checkRateLimit(
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
+/** True if `key` is under its limit. Does not consume any budget. */
+export function peekRateLimit(
+  key: string,
+  now = Date.now(),
+  { max, windowMs }: { max: number; windowMs: number } = RATE_LIMIT,
+): boolean {
+  const recent = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  return recent.length < max;
+}
+
+/** Record one event against `key` without checking it. */
+export function recordRateLimit(key: string, now = Date.now()): void {
+  const bucket = buckets.get(key) ?? [];
+  bucket.push(now);
+  buckets.set(key, bucket);
+}
+
 export function resetRateLimit(): void {
   buckets.clear();
 }

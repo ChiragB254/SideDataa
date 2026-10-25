@@ -13,23 +13,41 @@ export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 /** Whole request body cap: the file plus form fields and multipart framing. */
 export const APPLY_MAX_BODY_BYTES = RESUME_MAX_BYTES + 512 * 1024;
 
-export const RESUME_ACCEPT =
-  ".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export type ResumeExt = "pdf" | "docx";
+
+/**
+ * The ONE place that decides which resume types are accepted. Switch to
+ * PDF-only by changing this line to: ["pdf"]. The accept attribute, hint,
+ * error messages, form note, privacy text and checks all derive from it.
+ */
+export const RESUME_TYPES: readonly ResumeExt[] = ["pdf", "docx"];
+
+const TYPE_INFO: Record<ResumeExt, { mime: string; label: string }> = {
+  pdf: { mime: "application/pdf", label: "PDF" },
+  docx: {
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    label: "DOCX",
+  },
+};
+
+/** "PDF", or "PDF or DOCX". */
+export const RESUME_LABEL = RESUME_TYPES.map((t) => TYPE_INFO[t].label).join(" or ");
+/** "a PDF file", or "a PDF or DOCX file". */
+export const RESUME_FILE_PHRASE = `a ${RESUME_LABEL} file`;
+export const RESUME_ACCEPT = [
+  ...RESUME_TYPES.map((t) => `.${t}`),
+  ...RESUME_TYPES.map((t) => TYPE_INFO[t].mime),
+].join(",");
+export const RESUME_HINT = `${RESUME_LABEL}, up to 5 MB.`;
+export const RESUME_NOTE = `Attach your resume as ${RESUME_FILE_PHRASE}.`;
 
 export const resumeMessages = {
   missing: "Attach your resume.",
-  type: "Resumes must be a PDF or DOCX file.",
+  type: `Resumes must be a ${RESUME_LABEL} file.`,
   tooLarge: "The file is too large. The limit is 5 MB.",
   empty: "That file looks empty.",
-  content:
-    "That file does not look like a valid PDF or DOCX. Check it opens, then try again.",
+  content: `That file does not look like a valid ${RESUME_LABEL} file. Check it opens, then try again.`,
 } as const;
-
-const TYPES = {
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-} as const;
-export type ResumeExt = keyof typeof TYPES;
 
 /** Inner extensions that make a name like "resume.exe.pdf" suspicious. */
 const RISKY_INNER = new Set([
@@ -71,9 +89,9 @@ function extensionOf(name: string): ResumeExt | null {
   const parts = base.toLowerCase().split(".");
   if (parts.length < 2) return null;
   const ext = parts[parts.length - 1] as string;
-  if (ext !== "pdf" && ext !== "docx") return null;
+  if (!(RESUME_TYPES as readonly string[]).includes(ext)) return null;
   if (parts.slice(1, -1).some((p) => RISKY_INNER.has(p))) return null;
-  return ext;
+  return ext as ResumeExt;
 }
 
 /** Cheap checks usable in the browser: name, extension and size. */
@@ -152,10 +170,11 @@ export type ResumeCheck =
 /** Safe attachment name: basename only, [A-Za-z0-9._ -], max 80, validated extension. */
 export function safeFilename(name: string, ext: ResumeExt): string {
   const base = (name.split(/[\\/]/).pop() ?? "").replace(/\.[^.]*$/, "");
+  // Every dot except the final extension dot becomes "_", so a name such as
+  // "a.exe .pdf" can never end up as "a.exe.pdf".
   const cleaned = base
-    .replace(/[^A-Za-z0-9._ -]+/g, "_")
-    .replace(/\.{2,}/g, ".")
-    .replace(/^[.\s-]+|[.\s]+$/g, "")
+    .replace(/[^A-Za-z0-9 _-]+/g, "_")
+    .replace(/^[_\s-]+|[_\s]+$/g, "")
     .slice(0, 80 - ext.length - 1);
   return `${cleaned || "resume"}.${ext}`;
 }
@@ -179,7 +198,7 @@ export function validateResume(
     ok: true,
     ext: meta.ext,
     filename: safeFilename(file.name, meta.ext),
-    contentType: TYPES[meta.ext],
+    contentType: TYPE_INFO[meta.ext].mime,
     size: file.bytes.byteLength,
     bytes: file.bytes,
   };
