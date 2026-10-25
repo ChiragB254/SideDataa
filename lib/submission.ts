@@ -45,20 +45,35 @@ const statusFor = {
 } as const;
 
 /**
- * Best-effort client IP. Order: x-vercel-forwarded-for (set by the platform),
- * x-real-ip, then the RIGHTMOST x-forwarded-for entry (the one added by the
- * proxy closest to us; leftmost entries are client-controlled). Returns null
- * when nothing usable is present.
+ * Best-effort client IP.
+ *
+ * On Vercel (process.env.VERCEL is set) the platform strips and sets
+ * x-vercel-forwarded-for, so that header and x-real-ip are trusted, then the
+ * rightmost x-forwarded-for entry.
+ *
+ * Everywhere else (the EC2 deployment: Caddy on 80/443 proxying to Node on
+ * 127.0.0.1:3000) only the RIGHTMOST x-forwarded-for entry is used. Caddy
+ * REPLACES any client-supplied X-Forwarded-For with the address of the peer
+ * it actually saw (it only keeps incoming values from configured trusted
+ * proxies, and there are none), so that value is the real client. The
+ * rightmost rule is kept as defence in depth. Any x-real-ip or
+ * x-vercel-forwarded-for header can be forged by the client and is ignored.
+ * This is only safe because Node is bound to 127.0.0.1 and reachable solely
+ * through Caddy.
+ *
+ * Returns null when nothing usable is present.
  */
 export function clientIp(headers: Headers): string | null {
   const clean = (v: string | null | undefined) => {
     const t = v?.trim();
     return t && t.length <= 64 ? t : null;
   };
-  const vercel = clean(headers.get("x-vercel-forwarded-for")?.split(",")[0]);
-  if (vercel) return vercel;
-  const real = clean(headers.get("x-real-ip"));
-  if (real) return real;
+  if (process.env.VERCEL) {
+    const vercel = clean(headers.get("x-vercel-forwarded-for")?.split(",")[0]);
+    if (vercel) return vercel;
+    const real = clean(headers.get("x-real-ip"));
+    if (real) return real;
+  }
   const fwd = headers.get("x-forwarded-for")?.split(",");
   return clean(fwd?.[fwd.length - 1]);
 }

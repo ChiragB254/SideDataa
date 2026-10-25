@@ -39,6 +39,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Self-contained server.js + minimal node_modules for the EC2 release tarball.
+  output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

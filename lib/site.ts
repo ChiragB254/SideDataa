@@ -1,7 +1,7 @@
 export const site = {
   name: "SideData Technologies",
   shortName: "SideData",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://sidedataa.com",
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://sidedataa.com",
   email: "support@sidedataa.com",
   locality: "Toronto",
   region: "Ontario",

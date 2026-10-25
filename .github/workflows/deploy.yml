@@ -1,0 +1,199 @@
+name: Deploy
+# Build a standalone release, upload it to S3 and activate it on the EC2 host
+# through SSM (no SSH). Needs repo VARIABLE AWS_DEPLOY_ROLE_ARN.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only one deploy at a time; a newer push waits instead of cancelling a deploy
+# that may be half way through switching releases.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ca-central-1
+  RELEASE_BUCKET: ${{ vars.RELEASE_BUCKET || 'sidedata-releases-499024812515' }}
+  SITE_HEALTH_URL: https://sidedataa.com/healthz
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  # Runs npm ci + the build (third-party code) with NO cloud credentials.
+  build:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      tarball_sha256: ${{ steps.hash.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # Runs npm ci + npm run build and writes dist-release/<sha>.tar.gz.
+      # NEXT_PUBLIC_* values are baked into the client bundle at build time.
+      - name: Build release tarball
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://sidedataa.com' }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+        run: scripts/package-release.sh "$GITHUB_SHA"
+
+      - name: Record tarball hash
+        id: hash
+        run: |
+          set -euo pipefail
+          echo "sha256=$(sha256sum "dist-release/${GITHUB_SHA}.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: dist-release/${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # Holds the AWS identity but installs and builds nothing.
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Only for scripts/activate-release.sh; no npm install happens here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist-release
+
+      - name: Verify tarball hash from the build job
+        env:
+          EXPECTED_SHA256: ${{ needs.build.outputs.tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          actual="$(sha256sum "dist-release/${GITHUB_SHA}.tar.gz" | cut -d' ' -f1)"
+          if [ -z "$EXPECTED_SHA256" ] || [ "$actual" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Tarball hash mismatch (expected '${EXPECTED_SHA256}', got '${actual}')"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload release to S3
+        run: |
+          aws s3 cp --only-show-errors \
+            "dist-release/${GITHUB_SHA}.tar.gz" \
+            "s3://${RELEASE_BUCKET}/releases/${GITHUB_SHA}.tar.gz"
+
+      - name: Find instance (tag Name=sidedata-web)
+        id: instance
+        env:
+          INSTANCE_ID_OVERRIDE: ${{ vars.AWS_DEPLOY_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INSTANCE_ID_OVERRIDE}" ]; then
+            id="${INSTANCE_ID_OVERRIDE}"
+          else
+            # Needs ec2:DescribeInstances on the deploy role.
+            id="$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=sidedata-web" "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' --output text)"
+          fi
+          if ! [[ "$id" =~ ^i-[0-9a-f]+$ ]]; then
+            echo "::error::Expected exactly one running instance tagged Name=sidedata-web, got: '${id}'"
+            exit 1
+          fi
+          echo "instance_id=${id}" >> "$GITHUB_OUTPUT"
+
+      - name: Activate release via SSM
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          USE_PRESIGNED_URL: ${{ vars.DEPLOY_USE_PRESIGNED_URL }}
+        run: |
+          set -euo pipefail
+          # Only needed when the aws CLI is NOT installed on the host: pass a
+          # 15 minute pre-signed GET URL so the script can curl the tarball.
+          presigned=""
+          if [ "${USE_PRESIGNED_URL}" = "true" ]; then
+            presigned="$(aws s3 presign --expires-in 900 "s3://${RELEASE_BUCKET}/releases/${GITHUB_SHA}.tar.gz")"
+            echo "::add-mask::${presigned}"
+          fi
+          # Ship the script inline so the host never runs stale logic.
+          script_b64="$(base64 -w0 scripts/activate-release.sh)"
+          jq -n --arg b64 "$script_b64" --arg sha "$GITHUB_SHA" --arg url "$presigned" --arg bucket "$RELEASE_BUCKET" '{
+            commands: [
+              "set -eu",
+              ("echo " + $b64 + " | base64 -d > /tmp/activate-release.sh"),
+              ("RELEASE_BUCKET=" + ($bucket | @sh) + " bash /tmp/activate-release.sh " + $sha + (if $url != "" then " " + ($url | @sh) else "" end))
+            ],
+            executionTimeout: ["600"]
+          }' > ssm-params.json
+
+          command_id="$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${GITHUB_SHA}" \
+            --timeout-seconds 120 \
+            --parameters file://ssm-params.json \
+            --query 'Command.CommandId' --output text)"
+          echo "SSM command: ${command_id}"
+
+          status=""
+          for _ in $(seq 1 120); do
+            sleep 5
+            status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)"
+            case "$status" in
+              Success|Failed|Cancelled|TimedOut|Cancelling) break ;;
+            esac
+          done
+
+          echo "::group::Remote output (status: ${status})"
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text || true
+          echo "::endgroup::"
+
+          if [ "$status" != "Success" ]; then
+            echo "::error::Activation did not succeed (status: ${status}). The host rolls back to the previous release on failure."
+            exit 1
+          fi
+
+      # DNS may not point at the instance yet, so this must not fail the deploy.
+      - name: Post-deploy check (non-blocking until DNS is live)
+        continue-on-error: true
+        run: |
+          if curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 10 "$SITE_HEALTH_URL" | grep -q '"ok":true'; then
+            echo "Live site healthy at ${SITE_HEALTH_URL}"
+          else
+            echo "::warning::${SITE_HEALTH_URL} did not answer. Expected until DNS and Caddy TLS are live; the on-host check already passed. Remove continue-on-error once DNS is cut over."
+            exit 1
+          fi
