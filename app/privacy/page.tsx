@@ -12,6 +12,12 @@ import { site } from "@/lib/site";
  * for Canada (PIPEDA, Ontario). Have it reviewed against India's Digital Personal
  * Data Protection Act, 2023, and for the cross-border transfer of applications
  * between India and Canada.
+ * TODO(owner): resumes. Applicants attach a resume (PDF or DOCX) to the careers form.
+ * The website validates it in memory and emails it as an attachment through the email
+ * provider (Resend) to the inbox set in CONTACT_TO; it is not stored on the website
+ * server. Decide and state the retention period for resumes in that mailbox, whether
+ * resumes are shared with the joint-venture partner, and have the cross-border and DPDP
+ * Act review cover resumes. Do not add retention or sharing claims until decided.
  * TODO(owner): applications may be shared with the joint-venture partner, Right
  * Click Orbit (India). If that is true, this page must say so (what is shared,
  * why, and who it is shared with). The page does not currently say it.
@@ -42,7 +48,8 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Careers form:</strong> your name, email address, the role you are
-          interested in, an optional link to your work, and your message.
+          interested in, an optional link to your work, your message, and a resume file
+          (PDF or DOCX) that you attach.
         </li>
         <li>
           <strong>Email:</strong> anything you send to {site.email}.
@@ -69,6 +76,13 @@ export default function PrivacyPage() {
         enabled, Cloudflare Turnstile to filter automated spam. Some of these providers
         store data outside Canada, including in the United States, where it may be
         accessible under local law.
+      </p>
+
+      <h2>Resumes</h2>
+      <p>
+        When you apply, you attach a resume. The website checks the file and sends it to
+        us by email through our email provider. It is kept in our mailbox, and it is not
+        stored on the website server.
       </p>
 
       <h2>How long we keep it</h2>

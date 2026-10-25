@@ -198,9 +198,9 @@ export default function CareersPage() {
       >
         <div className="measure">
           <p className="mb-8 text-ink-soft">
-            Choose a role and send a short message. A link to your work helps, whether
-            that is a portfolio, GitHub or LinkedIn. No resume upload is needed at this
-            stage. Prefer email? Write to{" "}
+            Choose a role, send a short message and attach your resume. A link to your
+            work helps, whether that is a portfolio, GitHub or LinkedIn. A resume is
+            required. Prefer email? Write to{" "}
             <a className="link" href={`mailto:${site.email}`}>
               {site.email}
             </a>

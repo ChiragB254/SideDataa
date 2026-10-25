@@ -3,6 +3,12 @@ import { fieldErrors } from "./schemas";
 import { checkRateLimit, SHARED_LIMIT } from "./rate-limit";
 import { verifyTurnstile } from "./turnstile";
 import { sendMail, type OutgoingMail } from "./mail";
+import {
+  APPLY_MAX_BODY_BYTES,
+  resumeMessages,
+  validateResume,
+  type ResumeCheck,
+} from "./resume";
 
 export type FormKind = "contact" | "apply";
 
@@ -16,12 +22,18 @@ export type ApiResult =
         | "bot_check"
         | "unavailable"
         | "failed"
+        | "too_large"
         | "bad_request";
       message: string;
       errors?: Record<string, string>;
     };
 
-const MAX_BODY_BYTES = 40_000;
+/** Default cap for text-only forms (contact). The apply route passes its own. */
+const DEFAULT_MAX_BODY_BYTES = 40_000;
+
+/** Uploads being read at once. Bounds memory on top of the per-IP rate limit. */
+const MAX_CONCURRENT_UPLOADS = 6;
+let uploadsInFlight = 0;
 
 const messages = {
   invalid: "Some fields need attention. Check the highlighted fields and try again.",
@@ -32,12 +44,14 @@ const messages = {
     "This form is not accepting messages right now. Please email support@sidedataa.com instead.",
   failed:
     "We could not send your message. Please try again, or email support@sidedataa.com.",
+  too_large: "The file is too large. The limit is 5 MB.",
   bad_request: "The request could not be read.",
 } as const;
 
 const statusFor = {
   invalid: 400,
   bad_request: 400,
+  too_large: 413,
   bot_check: 403,
   rate_limited: 429,
   unavailable: 503,
@@ -104,15 +118,34 @@ function respond(request: Request, kind: FormKind, result: ApiResult): Response 
     return Response.json(result, { status: statusFor[result.code], headers });
   }
   // Plain HTML form post (no JavaScript): redirect to a status page.
-  const status = result.ok ? "sent" : result.code;
+  const status = result.ok
+    ? "sent"
+    : result.code === "invalid" && result.errors?.resume
+      ? "invalid_resume"
+      : result.code;
   const url = new URL(`/form-status?form=${kind}&result=${status}`, request.url);
   return Response.redirect(url, 303);
 }
 
-/** Read at most MAX_BODY_BYTES; returns null if the body is larger. */
-async function readBytes(request: Request): Promise<Uint8Array | null> {
-  const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return null;
+type UploadedFile = { name: string; bytes: Uint8Array };
+type ParsedBody = {
+  fields: Record<string, unknown>;
+  files: Record<string, UploadedFile>;
+};
+
+/**
+ * Read at most `max` bytes. Returns "too_large" when the declared length is
+ * over the cap (or missing, if `requireLength`) or when the stream exceeds it.
+ * The stream cap does not trust Content-Length.
+ */
+async function readBytes(
+  request: Request,
+  max: number,
+  requireLength: boolean,
+): Promise<Uint8Array | "too_large"> {
+  const header = request.headers.get("content-length");
+  if (requireLength && (header === null || !/^\d+$/.test(header))) return "too_large";
+  if (Number(header ?? 0) > max) return "too_large";
   if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -121,9 +154,9 @@ async function readBytes(request: Request): Promise<Uint8Array | null> {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > MAX_BODY_BYTES) {
+    if (total > max) {
       await reader.cancel().catch(() => {});
-      return null;
+      return "too_large";
     }
     chunks.push(value);
   }
@@ -136,16 +169,13 @@ async function readBytes(request: Request): Promise<Uint8Array | null> {
   return out;
 }
 
-async function readBody(request: Request): Promise<Record<string, unknown> | null> {
-  const type = request.headers.get("content-type") ?? "";
+async function parseBody(bytes: Uint8Array, type: string): Promise<ParsedBody | null> {
   try {
-    const bytes = await readBytes(request);
-    if (!bytes) return null;
     const replay = new Response(bytes as BodyInit, { headers: { "content-type": type } });
     if (type.includes("application/json")) {
       const json: unknown = await replay.json();
       return json && typeof json === "object" && !Array.isArray(json)
-        ? (json as Record<string, unknown>)
+        ? { fields: json as Record<string, unknown>, files: {} }
         : null;
     }
     if (
@@ -153,9 +183,13 @@ async function readBody(request: Request): Promise<Record<string, unknown> | nul
       type.includes("multipart/form-data")
     ) {
       const form = await replay.formData();
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of form.entries()) if (typeof v === "string") out[k] = v;
-      return out;
+      const fields: Record<string, unknown> = {};
+      const files: Record<string, UploadedFile> = {};
+      for (const [k, v] of form.entries()) {
+        if (typeof v === "string") fields[k] = v;
+        else files[k] = { name: v.name, bytes: new Uint8Array(await v.arrayBuffer()) };
+      }
+      return { fields, files };
     }
   } catch {
     return null;
@@ -170,9 +204,20 @@ export async function handleSubmission<
   },
 >(
   request: Request,
-  opts: { kind: FormKind; schema: ZodType<T>; toMail: (data: T) => OutgoingMail },
+  opts: {
+    kind: FormKind;
+    schema: ZodType<T>;
+    toMail: (data: T, resume?: Extract<ResumeCheck, { ok: true }>) => OutgoingMail;
+    /** Per-route body cap in bytes. Default 40 KB. */
+    maxBodyBytes?: number;
+    /** Require and validate an uploaded "resume" file. Needs a Content-Length. */
+    resume?: boolean;
+  },
 ): Promise<Response> {
   const { kind, schema, toMail } = opts;
+  const upload = opts.resume === true;
+  const maxBody =
+    opts.maxBodyBytes ?? (upload ? APPLY_MAX_BODY_BYTES : DEFAULT_MAX_BODY_BYTES);
   const fail = (
     code: Exclude<ApiResult, { ok: true }>["code"],
     errors?: Record<string, string>,
@@ -194,21 +239,45 @@ export async function handleSubmission<
     : checkRateLimit(`${kind}:shared`, Date.now(), SHARED_LIMIT);
   if (!limit.allowed) return fail("rate_limited");
 
-  const body = await readBody(request);
+  if (upload && uploadsInFlight >= MAX_CONCURRENT_UPLOADS) return fail("rate_limited");
+  if (upload) uploadsInFlight++;
+  let read: Uint8Array | "too_large";
+  let body: ParsedBody | null = null;
+  try {
+    read = await readBytes(request, maxBody, upload);
+    if (read !== "too_large") {
+      body = await parseBody(read, request.headers.get("content-type") ?? "");
+    }
+  } finally {
+    if (upload) uploadsInFlight--;
+  }
+  if (read === "too_large") {
+    return upload
+      ? fail("too_large", { resume: resumeMessages.tooLarge })
+      : fail("bad_request");
+  }
   if (!body) return fail("bad_request");
 
   // Honeypot: real people never see or fill this field. Pretend it worked.
-  if (typeof body.website === "string" && body.website.trim() !== "") {
+  if (typeof body.fields.website === "string" && body.fields.website.trim() !== "") {
     return respond(request, kind, { ok: true });
   }
 
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) return fail("invalid", fieldErrors(parsed.error));
+  const parsed = schema.safeParse(body.fields);
+  const errors: Record<string, string> = parsed.success ? {} : fieldErrors(parsed.error);
+  let resume: Extract<ResumeCheck, { ok: true }> | undefined;
+  if (upload) {
+    const check = validateResume(body.files.resume);
+    if (check.ok) resume = check;
+    else errors.resume = check.message;
+  }
+  // File and field errors are reported before any email or bot-check work.
+  if (!parsed.success || Object.keys(errors).length > 0) return fail("invalid", errors);
 
   const bot = await verifyTurnstile(parsed.data["cf-turnstile-response"], ip);
   if (bot === "failed") return fail("bot_check");
 
-  const result = await sendMail(toMail(parsed.data));
+  const result = await sendMail(toMail(parsed.data, resume));
   if (result === "unavailable") return fail("unavailable");
   if (result === "failed") return fail("failed");
   return respond(request, kind, { ok: true });

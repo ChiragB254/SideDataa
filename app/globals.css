@@ -146,6 +146,44 @@
     border-width: 2px;
   }
 
+  .file-control {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    color: var(--color-ink);
+    background: #fff;
+    border: 1px solid var(--color-rule-strong);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  .file-control:hover {
+    border-color: var(--color-ink);
+  }
+  .file-control[aria-invalid="true"] {
+    border-color: var(--color-danger);
+    border-width: 2px;
+  }
+  .file-control::file-selector-button {
+    margin-right: 0.75rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.9rem;
+    font: inherit;
+    font-weight: 500;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border: 1px solid var(--color-ink);
+    border-radius: 2px;
+    cursor: pointer;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease;
+  }
+  .file-control:hover::file-selector-button {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
   /* Reading width for running text */
   .measure {
     max-width: 40rem;

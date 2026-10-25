@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { tinyDocx, tinyPdf } from "../fixtures/files";
 
 const routes = [
   "/",
@@ -336,3 +337,159 @@ for (const [route, width] of [
     expect(w.sw).toBeLessThanOrEqual(w.iw);
   });
 }
+
+test.describe("careers resume upload", () => {
+  const pdf = () => ({
+    name: "cv.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(tinyPdf()),
+  });
+
+  test("file field is labelled, described and required", async ({ page }) => {
+    await page.goto("/careers");
+    const input = page.getByLabel(/^Resume/);
+    await expect(input).toHaveAttribute("type", "file");
+    await expect(input).toHaveAttribute("accept", /\.pdf,\.docx/);
+    await expect(input).toHaveAttribute("required", "");
+    await expect(input).toHaveAttribute("aria-describedby", /hint/);
+    await expect(page.getByText("PDF or DOCX, up to 5 MB.")).toBeVisible();
+    const box = await input.boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("empty submit lists the resume in the error summary and focuses it from the link", async ({
+    page,
+  }) => {
+    await page.goto("/careers");
+    await page.getByRole("button", { name: "Send application" }).click();
+    const link = page.getByRole("link", { name: "Resume: Attach your resume." });
+    await expect(link).toBeVisible();
+    await expect(page.getByLabel(/^Resume/)).toHaveAttribute("aria-invalid", "true");
+    await link.click();
+    await expect(page.getByLabel(/^Resume/)).toBeFocused();
+  });
+
+  test("wrong file type shows an error; a valid file shows its name in a status", async ({
+    page,
+  }) => {
+    await page.goto("/careers");
+    const input = page.getByLabel(/^Resume/);
+    await input.setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("hello"),
+    });
+    await expect(page.getByText("Resumes must be a PDF or DOCX file.")).toBeVisible();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    await input.setInputFiles(pdf());
+    await expect(page.getByText("Selected: cv.pdf (")).toBeVisible();
+    await expect(input).not.toHaveAttribute("aria-invalid", "true");
+    await expect(
+      page.locator('[role="status"]', { hasText: "Selected: cv.pdf" }),
+    ).toHaveCount(1);
+  });
+
+  test("a file over 5 MB is rejected in the browser", async ({ page }) => {
+    await page.goto("/careers");
+    await page.getByLabel(/^Resume/).setInputFiles({
+      name: "big.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
+    });
+    await expect(
+      page.getByText("The file is too large. The limit is 5 MB."),
+    ).toBeVisible();
+  });
+
+  test("keyboard-only completion sends multipart, and the file survives a server error", async ({
+    page,
+  }) => {
+    let calls = 0;
+    let lastBody = "";
+    await page.route("**/api/apply", async (route) => {
+      calls++;
+      lastBody = route.request().postData() ?? "";
+      const type = route.request().headers()["content-type"] ?? "";
+      expect(type).toContain("multipart/form-data");
+      if (calls === 1) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          json: {
+            ok: false,
+            code: "invalid",
+            message: "Some fields need attention.",
+            errors: { link: "Enter a full link starting with https://" },
+          },
+        });
+      } else {
+        await route.fulfill({ json: { ok: true } });
+      }
+    });
+    await page.goto("/careers#apply");
+    await page.getByLabel(/^Name/).focus();
+    await page.keyboard.type("Sam Student");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("sam@example.com");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("Content");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("https://example.com/me");
+    await page.keyboard.press("Tab");
+    await page.keyboard.type("I write about technology and enjoy editing.");
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel(/^Resume/)).toBeFocused();
+    await page.getByLabel(/^Resume/).setInputFiles(pdf());
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Send application" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByText("Enter a full link starting with https://").first(),
+    ).toBeVisible();
+    expect(lastBody).toContain('filename="cv.pdf"');
+    // WCAG 3.3.7: the chosen file is still there for the retry.
+    expect(
+      await page
+        .getByLabel(/^Resume/)
+        .evaluate((el: HTMLInputElement) => el.files?.length),
+    ).toBe(1);
+    await page.getByRole("button", { name: "Send application" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Application received" }),
+    ).toBeVisible();
+    expect(calls).toBe(2);
+  });
+
+  test("works without JavaScript: native multipart post reaches the server checks", async ({
+    browser,
+  }) => {
+    const ctx = await browser.newContext({ javaScriptEnabled: false });
+    const page = await ctx.newPage();
+    const fill = async (file: { name: string; mimeType: string; buffer: Buffer }) => {
+      await page.goto("http://localhost:3100/careers");
+      await page.getByLabel(/^Name/).fill("Sam Student");
+      await page.getByLabel(/^Email/).fill("sam@example.com");
+      await page.getByLabel(/^Role/).selectOption("content-writer");
+      await page
+        .getByRole("textbox", { name: /^Tell us about yourself/ })
+        .fill("I write about technology.");
+      await page.getByLabel(/^Resume/).setInputFiles(file);
+      await page.getByRole("button", { name: "Send application" }).click();
+    };
+    // Valid file: validation passes and the route reaches the email step
+    // (the test server has no email key, so it answers "unavailable").
+    await fill(pdf());
+    await expect(page).toHaveURL(/form-status\?form=apply&result=unavailable/);
+    await fill({ name: "x.txt", mimeType: "text/plain", buffer: Buffer.from("hi") });
+    await expect(page).toHaveURL(/result=invalid_resume/);
+    await expect(
+      page.getByRole("heading", { name: /resume could not be accepted/i }),
+    ).toBeVisible();
+    await ctx.close();
+  });
+
+  test("docx fixture is a real zip", () => {
+    const b = tinyDocx();
+    expect([b[0], b[1], b[2], b[3]]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+  });
+});
