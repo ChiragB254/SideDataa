@@ -1,32 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { chromium, type Page } from "@playwright/test";
 import jsQR from "jsqr";
 import { cards, cardUrl } from "@/content/cards";
 import { qrCodes } from "@/content/generated/qr";
 import { OUT, renderQrModule } from "../../scripts/cards/generate-qr";
-import { makeQr, qrSvg, QUIET_ZONE } from "../../scripts/cards/qr";
+import { QUIET_ZONE } from "../../scripts/cards/qr";
 
-const SIDE = 444;
-
-/** Rasterise an SVG document in Chromium and return RGBA pixels. */
-async function rasterise(page: Page, svg: string): Promise<Uint8ClampedArray> {
-  const px = await page.evaluate(
-    async ([markup, side]) => {
-      const img = new Image();
-      img.src =
-        "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup as string);
-      await img.decode();
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = side as number;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, side as number, side as number);
-      return Array.from(ctx.getImageData(0, 0, side as number, side as number).data);
-    },
-    [svg, SIDE] as const,
-  );
-  return Uint8ClampedArray.from(px);
-}
+// Pure Node: no browser. Browser rasterising and the print-PNG decode live in
+// tests/e2e/qr.spec.ts.
 
 describe("generated QR module", () => {
   it("is in sync with content/cards.ts (run `npm run cards:qr` if this fails)", async () => {
@@ -42,70 +23,28 @@ describe("generated QR module", () => {
   });
 });
 
-describe("QR codes decode to the card URL", () => {
-  it("rasterises each SVG in Chromium and decodes it with jsQR", async () => {
-    const browser = await chromium.launch();
-    try {
-      const page = await browser.newPage();
-      const variants = [
-        { dark: "#1b1f23", light: "#faf9f6" }, // website and colour print
-        { dark: "#000000", light: "#ffffff" }, // one-colour print
-      ];
-      for (const variant of variants) {
-        for (const c of cards) {
-          const px = await rasterise(page, qrSvg(makeQr(cardUrl(c)), variant));
-          expect(jsQR(px, SIDE, SIDE)?.data, `${c.slug} ${variant.dark}`).toBe(
-            cardUrl(c),
-          );
-        }
+/** Paint the committed path data ("Mx yhNv1h-Nz" runs) into an RGBA bitmap. */
+function paint(size: number, path: string, scale: number): Uint8ClampedArray {
+  const px = new Uint8ClampedArray(size * scale * size * scale * 4).fill(255);
+  for (const m of path.matchAll(/M(\d+) (\d+)h(\d+)v1h-\d+z/g)) {
+    const [x, y, run] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    for (let py = y * scale; py < (y + 1) * scale; py++) {
+      for (let pxx = x * scale; pxx < (x + run) * scale; pxx++) {
+        const i = (py * size * scale + pxx) * 4;
+        px[i] = px[i + 1] = px[i + 2] = 0x1b;
       }
-      // The committed path data (what the website renders) decodes too.
-      for (const c of cards) {
-        const q = qrCodes[c.slug]!;
-        const px = await rasterise(
-          page,
-          qrSvg({ modules: q.size - 2 * QUIET_ZONE, size: q.size, path: q.path }),
-        );
-        expect(jsQR(px, SIDE, SIDE)?.data, c.slug).toBe(q.url);
-      }
-    } finally {
-      await browser.close();
     }
-  }, 60_000);
-});
+  }
+  return px;
+}
 
-describe("printed card QR codes", () => {
-  it("decode from the 300 dpi back-side previews (design/cards, if generated)", async () => {
-    const browser = await chromium.launch();
-    try {
-      const page = await browser.newPage();
-      let checked = 0;
-      for (const c of cards) {
-        const file = `design/cards/${c.slug}/${c.slug}-back.png`;
-        if (!existsSync(file)) continue;
-        const b64 = readFileSync(file).toString("base64");
-        const px = await page.evaluate(async (src) => {
-          const img = new Image();
-          img.src = src;
-          await img.decode();
-          const canvas = document.createElement("canvas");
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext("2d")!;
-          ctx.drawImage(img, 0, 0);
-          return {
-            w: img.width,
-            h: img.height,
-            d: Array.from(ctx.getImageData(0, 0, img.width, img.height).data),
-          };
-        }, `data:image/png;base64,${b64}`);
-        const found = jsQR(Uint8ClampedArray.from(px.d), px.w, px.h);
-        expect(found?.data, c.slug).toBe(cardUrl(c));
-        checked++;
-      }
-      expect(checked).toBeGreaterThan(0); // the company card output is committed
-    } finally {
-      await browser.close();
+describe("QR path data decodes to the card URL", () => {
+  it("decodes each committed path with jsQR", () => {
+    for (const c of cards) {
+      const q = qrCodes[c.slug]!;
+      const scale = 8;
+      const px = paint(q.size, q.path, scale);
+      expect(jsQR(px, q.size * scale, q.size * scale)?.data, c.slug).toBe(cardUrl(c));
     }
-  }, 60_000);
+  });
 });
