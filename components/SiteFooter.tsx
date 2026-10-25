@@ -60,11 +60,6 @@ export function SiteFooter() {
                   Contact
                 </Link>
               </li>
-              <li>
-                <Link className={linkClass} href="/card">
-                  Digital card
-                </Link>
-              </li>
             </ul>
           </nav>
 
