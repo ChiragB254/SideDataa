@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { chromium, type Page } from "@playwright/test";
 import jsQR from "jsqr";
@@ -68,6 +68,42 @@ describe("QR codes decode to the card URL", () => {
         );
         expect(jsQR(px, SIDE, SIDE)?.data, c.slug).toBe(q.url);
       }
+    } finally {
+      await browser.close();
+    }
+  }, 60_000);
+});
+
+describe("printed card QR codes", () => {
+  it("decode from the 300 dpi back-side previews (design/cards, if generated)", async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      let checked = 0;
+      for (const c of cards) {
+        const file = `design/cards/${c.slug}/${c.slug}-back.png`;
+        if (!existsSync(file)) continue;
+        const b64 = readFileSync(file).toString("base64");
+        const px = await page.evaluate(async (src) => {
+          const img = new Image();
+          img.src = src;
+          await img.decode();
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d")!;
+          ctx.drawImage(img, 0, 0);
+          return {
+            w: img.width,
+            h: img.height,
+            d: Array.from(ctx.getImageData(0, 0, img.width, img.height).data),
+          };
+        }, `data:image/png;base64,${b64}`);
+        const found = jsQR(Uint8ClampedArray.from(px.d), px.w, px.h);
+        expect(found?.data, c.slug).toBe(cardUrl(c));
+        checked++;
+      }
+      expect(checked).toBeGreaterThan(0); // the company card output is committed
     } finally {
       await browser.close();
     }
