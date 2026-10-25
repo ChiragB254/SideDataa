@@ -23,8 +23,10 @@ export function Row({
   id,
   children,
   heading,
+  tone = "paper",
   className = "",
 }: {
+  tone?: "paper" | "tint" | "wash";
   label?: string;
   id?: string;
   heading?: ReactNode;
@@ -35,14 +37,14 @@ export function Row({
     <section
       id={id}
       aria-labelledby={id ? `${id}-title` : undefined}
-      className={`border-t border-rule py-12 md:py-16 ${className}`}
+      className={`border-t border-rule py-12 md:py-20 ${tone === "tint" ? "tone-tint" : tone === "wash" ? "tone-wash" : ""} ${className}`}
     >
       <Container>
         <div className="grid gap-6 md:grid-cols-12 md:gap-x-10">
           <div className="md:col-span-3">
             {label ? <p className="eyebrow">{label}</p> : null}
           </div>
-          <div className="md:col-span-9">
+          <div className="min-w-0 md:col-span-9">
             {heading}
             {children}
           </div>
@@ -56,7 +58,7 @@ export function RowTitle({ id, children }: { id?: string; children: ReactNode })
   return (
     <h2
       id={id ? `${id}-title` : undefined}
-      className="mb-8 max-w-[28ch] text-3xl leading-tight md:text-4xl"
+      className="mb-8 max-w-[28ch] text-3xl leading-tight md:text-[2.5rem]"
     >
       {children}
     </h2>

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Container, Row, RowTitle } from "@/components/Container";
-import { ServiceList } from "@/components/ServiceList";
+import { ServiceCarousel } from "@/components/ServiceCarousel";
+import { HeroIllustration } from "@/components/illustrations/HeroIllustration";
 import { Steps } from "@/components/Steps";
+import { ArrowLink } from "@/components/ArrowLink";
 import { CtaBand } from "@/components/CtaBand";
 import { howWeWork, stack } from "@/content/work";
 import { site } from "@/lib/site";
@@ -9,42 +11,53 @@ import { site } from "@/lib/site";
 export default function HomePage() {
   return (
     <>
-      <section className="py-16 md:py-24">
+      <section className="py-14 md:py-20">
         <Container>
-          <p className="eyebrow">
-            {site.name} &middot; {site.locationLabel}
-          </p>
-          <h1 className="mt-6 max-w-[24ch] text-[2.5rem] leading-[1.08] sm:text-6xl md:text-[4.25rem]">
-            We build software and AI systems, and look after the infrastructure behind
-            them.
-          </h1>
-          <p className="mt-8 max-w-xl text-lg text-ink-soft">
-            SideData is an IT company in Toronto. We develop AI applications, websites and
-            web applications, and we manage servers, cloud environments and everyday IT
-            for the organisations that depend on them.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3">
-            <Link href="/contact" className="btn">
-              Start a conversation
-            </Link>
-            <Link
-              href="/services"
-              className="link inline-flex min-h-11 items-center font-medium"
-            >
-              See what we do
-            </Link>
+          <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-10">
+            <div className="lg:col-span-7">
+              <p className="eyebrow">
+                {site.name} &middot; {site.locationLabel}
+              </p>
+              <h1 className="mt-6 max-w-[22ch] text-[2.5rem] leading-[1.06] sm:text-6xl lg:text-[3.75rem]">
+                We build software and AI systems, and look after the infrastructure behind
+                them.
+              </h1>
+              <p className="mt-8 max-w-xl text-lg text-ink-soft">
+                SideData is an IT company in Toronto. We develop AI applications, websites
+                and web applications, and we manage servers, cloud environments and
+                everyday IT for the organisations that depend on them.
+              </p>
+              <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-3">
+                <Link href="/contact" className="btn">
+                  Start a conversation
+                </Link>
+                <Link
+                  href="/services"
+                  className="link inline-flex min-h-11 items-center font-medium"
+                >
+                  See what we do
+                </Link>
+              </div>
+            </div>
+            <div className="bg-dots lg:col-span-5">
+              <HeroIllustration />
+            </div>
           </div>
         </Container>
       </section>
 
       <Row
         id="services"
-        label="Services"
+        label="What we build"
+        tone="tint"
         heading={
           <RowTitle id="services">Five areas of work, one way of working.</RowTitle>
         }
       >
-        <ServiceList />
+        <ServiceCarousel />
+        <p className="mt-6">
+          <ArrowLink href="/services">See all services</ArrowLink>
+        </p>
       </Row>
 
       <Row
@@ -61,6 +74,7 @@ export default function HomePage() {
 
       <Row
         id="stack"
+        tone="wash"
         label="What we build with"
         heading={<RowTitle id="stack">Common, well-supported tools.</RowTitle>}
       >

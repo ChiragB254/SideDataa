@@ -7,6 +7,14 @@ import { site } from "@/lib/site";
  * lawyer licensed in Ontario review it before launch, and confirm the
  * retention period, the service providers listed and whether you use any
  * analytics (none are installed in this codebase).
+ *
+ * TODO(owner): internship applicants will be in India, but this draft is written
+ * for Canada (PIPEDA, Ontario). Have it reviewed against India's Digital Personal
+ * Data Protection Act, 2023, and for the cross-border transfer of applications
+ * between India and Canada.
+ * TODO(owner): applications may be shared with the joint-venture partner, Right
+ * Click Orbit (India). If that is true, this page must say so (what is shared,
+ * why, and who it is shared with). The page does not currently say it.
  */
 export const metadata = pageMetadata({
   title: "Privacy notice",

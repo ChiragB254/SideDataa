@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  LetterIcon,
+  MentorshipIcon,
+  SubscriptionIcon,
+} from "@/components/illustrations/Icons";
 import { Row, RowTitle } from "@/components/Container";
 import { PageHeader } from "@/components/PageHeader";
 import { ApplyForm } from "@/components/forms/ApplyForm";
@@ -9,16 +14,46 @@ import { site } from "@/lib/site";
 export const metadata = pageMetadata({
   title: "Careers",
   description:
-    "Roles for a Web Developer, a Content Writer, and a UI/UX and Graphic Designer at SideData Technologies in Toronto. Learn on real projects with mentorship and written feedback.",
+    "Unpaid internships in India for a Web Developer, a Content Writer, and a UI/UX and Graphic Designer, run under a joint venture between SideData Technologies and Right Click Orbit (India). Mentorship, a Claude subscription and an experience letter.",
   path: "/careers",
 });
 
 /*
+ * TODO(owner): internships run in India; confirm with counsel the rules that apply to
+ * unpaid internships in India, and the written terms between SideData, Right Click
+ * Orbit (India) and interns.
+ * TODO(owner): confirm the exact legal or display name of Right Click Orbit (India).
+ * Their own website writes "Right Click Orbit".
+ * TODO(owner): the Claude subscription and the experience letter below are stated in
+ * one plain sentence each. Decide and, if you wish, publish the conditions (for example
+ * how long the subscription lasts and what an intern must complete to receive the
+ * letter). None are invented here.
+ */
+
+/*
  * TODO(owner): confirm the learning commitments below (mentorship, review,
  * written feedback, real projects) are what you will actually provide, and
- * decide how and when you will reply to applicants. Pay, hours, location and
- * contract terms are deliberately not stated anywhere on this page.
+ * decide how and when you will reply to applicants. Hours, duration and
+ * working arrangements are deliberately not stated anywhere on this page.
  */
+const perks = [
+  {
+    title: "Mentorship",
+    body: "Someone more experienced guides your work and explains the reasoning.",
+    Icon: MentorshipIcon,
+  },
+  {
+    title: "A Claude subscription",
+    body: "You receive a Claude subscription.",
+    Icon: SubscriptionIcon,
+  },
+  {
+    title: "An experience letter",
+    body: "You receive an experience letter.",
+    Icon: LetterIcon,
+  },
+];
+
 const learning = [
   {
     title: "Real projects",
@@ -46,16 +81,61 @@ export default function CareersPage() {
         title="Do real work, and learn how it is done properly."
       >
         <p>
-          We are looking for people who want to build skills on real projects: web
-          developers, content writers, and UI/UX and graphic designers. Students and
-          early-career people are welcome to apply.
+          We offer internships for web developers, content writers, and UI/UX and graphic
+          designers. Students and early-career people are welcome to apply.
+        </p>
+        <p className="border-l-4 border-accent pl-4 font-medium text-ink">
+          These internships are unpaid. They run in India.
         </p>
         <p>
-          <a className="link" href="#apply">
+          <a className="link inline-flex min-h-11 items-center" href="#apply">
             Go to the application form
           </a>
         </p>
       </PageHeader>
+
+      <Row
+        id="get"
+        tone="tint"
+        label="What you get"
+        heading={<RowTitle id="get">Three things come with an internship.</RowTitle>}
+      >
+        <ul className="grid gap-8 md:grid-cols-3">
+          {perks.map(({ title, body, Icon }) => (
+            <li key={title} className="border-t border-ink pt-5">
+              <Icon className="h-12 w-12" />
+              <h3 className="mt-4 text-xl leading-snug">{title}</h3>
+              <p className="mt-2 text-ink-soft">{body}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="measure mt-8 text-ink-soft">These internships are unpaid.</p>
+      </Row>
+
+      <Row
+        id="joint-venture"
+        label="Joint venture"
+        heading={<RowTitle id="joint-venture">Run by two companies.</RowTitle>}
+      >
+        <div className="prose-copy measure text-ink-soft">
+          <p>
+            All internships are run under a joint venture between {site.name} and Right
+            Click Orbit (India).
+          </p>
+          <p>
+            <a
+              className="link inline-flex min-h-11 items-center"
+              href="https://rightclickorbit.com"
+              rel="noopener noreferrer"
+            >
+              rightclickorbit.com
+              <span className="ml-1.5 text-sm text-muted no-underline">
+                (a different website)
+              </span>
+            </a>
+          </p>
+        </div>
+      </Row>
 
       <Row
         id="work"
@@ -78,6 +158,7 @@ export default function CareersPage() {
 
       <Row
         id="learning"
+        tone="wash"
         label="How you learn"
         heading={<RowTitle id="learning">Four ways we help you improve.</RowTitle>}
       >
@@ -150,17 +231,18 @@ export default function CareersPage() {
       <Row
         id="terms"
         label="Details"
-        heading={<RowTitle id="terms">Pay, hours and arrangements.</RowTitle>}
+        heading={<RowTitle id="terms">Hours and arrangements.</RowTitle>}
       >
         <p className="measure text-ink-soft">
-          Details such as compensation, hours, where the work happens and the terms of the
-          arrangement are shared during the conversation, so that they can be explained
-          properly and fit the role. Ask anything you like before you decide.
+          Details such as hours and the terms of the arrangement are shared during the
+          conversation, so that they can be explained properly and fit the role. Ask
+          anything you like before you decide.
         </p>
       </Row>
 
       <Row
         id="apply"
+        tone="tint"
         label="Apply"
         heading={<RowTitle id="apply">Tell us about yourself.</RowTitle>}
       >

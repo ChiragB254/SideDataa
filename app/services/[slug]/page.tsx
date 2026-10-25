@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Container, Row, RowTitle } from "@/components/Container";
+import { ServiceIllustration } from "@/components/illustrations/ServiceIllustrations";
 import { Steps } from "@/components/Steps";
 import { CtaBand } from "@/components/CtaBand";
 import { getService, services } from "@/content/services";
@@ -56,13 +57,20 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
               </li>
             </ol>
           </nav>
-          <h1 className="mt-2 max-w-[22ch] text-5xl leading-[1.1] md:text-6xl">
-            {service.title}
-          </h1>
-          <div className="mt-8 max-w-xl space-y-4 text-lg text-ink-soft">
-            {service.intro.map((p) => (
-              <p key={p}>{p}</p>
-            ))}
+          <div className="mt-2 grid items-center gap-10 lg:grid-cols-12">
+            <div className="lg:col-span-7">
+              <h1 className="mt-2 max-w-[22ch] text-5xl leading-[1.1] md:text-6xl">
+                {service.title}
+              </h1>
+              <div className="mt-8 max-w-xl space-y-4 text-lg text-ink-soft">
+                {service.intro.map((p) => (
+                  <p key={p}>{p}</p>
+                ))}
+              </div>
+            </div>
+            <div className="art-panel bg-dots p-6 lg:col-span-5">
+              <ServiceIllustration slug={service.slug} />
+            </div>
           </div>
         </Container>
       </section>
@@ -87,6 +95,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
 
       <Row
         id="engagements"
+        tone="tint"
         label="Typical engagements"
         heading={
           <RowTitle id="engagements">Examples of how people ask for this.</RowTitle>
@@ -111,6 +120,7 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
 
       <Row
         id="tech"
+        tone="wash"
         label="Tech"
         heading={<RowTitle id="tech">What we usually use.</RowTitle>}
       >

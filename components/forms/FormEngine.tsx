@@ -43,6 +43,7 @@ export function FormEngine({
   schema,
   fields,
   submitLabel,
+  note,
   successTitle,
   successBody,
 }: {
@@ -51,6 +52,7 @@ export function FormEngine({
   schema: ZodType;
   fields: FieldConfig[];
   submitLabel: string;
+  note?: string;
   successTitle: string;
   successBody: string;
 }) {
@@ -284,6 +286,8 @@ export function FormEngine({
           {serverMessage}
         </p>
       )}
+
+      {note ? <p className="text-ink-soft">{note}</p> : null}
 
       <div className="flex flex-wrap items-center gap-4">
         <button type="submit" className="btn" disabled={status === "submitting"}>

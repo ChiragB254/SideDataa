@@ -40,6 +40,7 @@ export function ApplyForm() {
       schema={applySchema}
       fields={fields}
       submitLabel="Send application"
+      note="These internships are unpaid."
       successTitle="Application received"
       successBody="Thanks, we have received your application."
     />

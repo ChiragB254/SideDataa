@@ -20,15 +20,13 @@ const routes = [
 ];
 
 for (const route of routes) {
-  test(`no serious or critical axe violations: ${route}`, async ({ page }) => {
+  test(`no axe violations (WCAG 2.2 A/AA tags): ${route}`, async ({ page }) => {
     await page.goto(route);
     await expect(page.locator("h1")).toHaveCount(1);
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
       .analyze();
-    const bad = results.violations.filter(
-      (v) => v.impact === "serious" || v.impact === "critical",
-    );
+    const bad = results.violations;
     expect(
       bad,
       JSON.stringify(

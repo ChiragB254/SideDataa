@@ -104,8 +104,9 @@ export default function AboutPage() {
         <div className="prose-copy measure text-ink-soft">
           {/* TODO(owner): confirm students, mentorship, review and feedback claims. */}
           <p>
-            We bring in students and early-career people to work on real projects
-            alongside experienced engineers, with mentorship, code review and written
+            We offer unpaid internships to students and early-career people, run in India
+            under a joint venture between {site.name} and Right Click Orbit (India).
+            Interns work on real projects with mentorship, code review and written
             feedback. It makes our own standards clearer, and it gives people work they
             can point to.
           </p>
