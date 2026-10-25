@@ -222,12 +222,27 @@ describe("client IP and rate limiting", () => {
     expect(res.status).toBe(429);
   });
 
-  it("prefers x-vercel-forwarded-for", () => {
+  it("on Vercel prefers x-vercel-forwarded-for, then x-real-ip", () => {
+    vi.stubEnv("VERCEL", "1");
     const h = new Headers({
       "x-vercel-forwarded-for": "5.5.5.5",
+      "x-real-ip": "6.6.6.6",
       "x-forwarded-for": "1.1.1.1",
     });
     expect(clientIp(h)).toBe("5.5.5.5");
+    h.delete("x-vercel-forwarded-for");
+    expect(clientIp(h)).toBe("6.6.6.6");
+  });
+
+  it("behind Caddy (not Vercel) uses only the rightmost x-forwarded-for entry", () => {
+    vi.stubEnv("VERCEL", "");
+    const h = new Headers({
+      "x-vercel-forwarded-for": "5.5.5.5",
+      "x-real-ip": "6.6.6.6",
+      "x-forwarded-for": "8.8.8.8, 1.1.1.1, 203.0.113.9",
+    });
+    expect(clientIp(h)).toBe("203.0.113.9");
+    expect(clientIp(new Headers({ "x-real-ip": "6.6.6.6" }))).toBeNull();
   });
 
   it("returns null when no IP header exists", () => {

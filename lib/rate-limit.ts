@@ -1,7 +1,9 @@
 /**
- * Simple in-memory sliding-window limiter. State lives in one server
- * instance, so on serverless hosting it is a best-effort brake against
- * bursts, not a guarantee. Put Cloudflare rate limiting in front for more.
+ * Simple in-memory sliding-window limiter. State lives in the memory of one
+ * Node process. On the single-EC2 deployment that is exactly one process, so
+ * the limit is enforced for real, but it resets on every restart or deploy
+ * and would NOT be shared if a second server or serverless hosting were
+ * used. Put a WAF or Cloudflare rate limiting in front for more.
  */
 type Bucket = number[];
 const buckets = new Map<string, Bucket>();

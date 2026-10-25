@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored by infra/terraform/.gitignore) and edit.
+# Every value below is optional; defaults are in variables.tf.
+# NEVER put secrets here. App secrets go in /etc/sidedata/env on the box.
+
+# domain       = "sidedataa.com"
+# acme_email   = "support@sidedataa.com"   # Let's Encrypt expiry notices
+# alert_email  = "you@example.com"         # creates SNS topic + email subscription
+# cpu_credits  = "standard"                # "unlimited" = never throttled, may bill extra
+# create_github_oidc_provider = true       # false if the provider already exists

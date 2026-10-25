@@ -1,0 +1,11 @@
+# Local state holds resource ids and the rendered user_data. Do not commit.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+terraform.tfvars
+*.auto.tfvars
+# Lock file IS committed (pins provider checksums).
+!.terraform.lock.hcl

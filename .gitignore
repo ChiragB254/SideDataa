@@ -14,3 +14,4 @@ playwright-report
 test-results
 .archify/
 AGENTS.md
+dist-release
