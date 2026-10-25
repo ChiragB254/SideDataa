@@ -3,8 +3,8 @@ import { POST as contactPOST } from "@/app/api/contact/route";
 import { POST as applyPOST } from "@/app/api/apply/route";
 import { resetRateLimit } from "@/lib/rate-limit";
 import { BODY_DEADLINE_MS, clientIp, resetUploadState } from "@/lib/submission";
-import { tinyDocx, tinyPdf } from "../fixtures/files";
-import { RESUME_TYPES, resumeMessages } from "@/lib/resume";
+import { tinyPdf } from "../fixtures/files";
+import { resumeMessages } from "@/lib/resume";
 
 const send = vi.fn();
 vi.mock("resend", () => ({
@@ -255,25 +255,15 @@ describe("POST /api/apply", () => {
     expect(name).not.toContain("/");
   });
 
-  it.runIf(RESUME_TYPES.includes("docx"))(
-    "attaches a valid DOCX with the right content type",
-    async () => {
-      const res = await applyPOST(
-        await applyReq(application, { name: "cv.docx", bytes: tinyDocx() }),
-      );
-      expect(res.status).toBe(200);
-      expect(send.mock.calls[0]![0].attachments[0].contentType).toContain(
-        "wordprocessingml",
-      );
-    },
-  );
-
-  it("returns 400 with a resume field error when the file is missing", async () => {
-    const res = await applyPOST(await applyReq(application, null));
+  it("rejects a DOCX upload: resumes are PDF only", async () => {
+    const res = await applyPOST(
+      await applyReq(application, {
+        name: "cv.docx",
+        bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+      }),
+    );
     expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.code).toBe("invalid");
-    expect(json.errors.resume).toBe("Attach your resume.");
+    expect((await res.json()).errors.resume).toBe(resumeMessages.type);
     expect(send).not.toHaveBeenCalled();
   });
 

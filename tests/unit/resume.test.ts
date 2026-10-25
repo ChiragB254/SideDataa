@@ -7,9 +7,8 @@ import {
   safeFilename,
   validateResume,
 } from "@/lib/resume";
-import { makeZip, tinyDocx, tinyPdf } from "../fixtures/files";
+import { tinyPdf } from "../fixtures/files";
 
-const DOCX = RESUME_TYPES.includes("docx");
 const msg = (r: ReturnType<typeof validateResume>) => (r.ok ? "ok" : r.message);
 
 describe("validateResume", () => {
@@ -20,12 +19,6 @@ describe("validateResume", () => {
       expect(r.contentType).toBe("application/pdf");
       expect(r.filename).toBe("My Resume.pdf");
     }
-  });
-
-  it.runIf(DOCX)("accepts a valid DOCX, case-insensitive extension", () => {
-    const r = validateResume({ name: "CV.DOCX", bytes: tinyDocx() });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.filename).toBe("CV.docx");
   });
 
   it("rejects a missing file and an empty file input", () => {
@@ -49,10 +42,12 @@ describe("validateResume", () => {
     );
   });
 
-  it.runIf(!DOCX)("rejects DOCX when only PDF is accepted", () => {
-    expect(msg(validateResume({ name: "cv.docx", bytes: tinyDocx() }))).toBe(
-      resumeMessages.type,
-    );
+  it("rejects DOCX and other types: resumes are PDF only", () => {
+    expect(RESUME_TYPES).toEqual(["pdf"]);
+    const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0]);
+    for (const name of ["cv.docx", "cv.doc", "cv.rtf", "cv.png"]) {
+      expect(msg(validateResume({ name, bytes: zip }))).toBe(resumeMessages.type);
+    }
   });
 
   it("rejects wrong magic bytes (an .exe renamed .pdf)", () => {
@@ -61,18 +56,7 @@ describe("validateResume", () => {
       resumeMessages.content,
     );
     expect(msg(validateResume({ name: "resume.docx", bytes: tinyPdf() }))).toBe(
-      DOCX ? resumeMessages.content : resumeMessages.type,
-    );
-  });
-
-  it.runIf(DOCX)("rejects a ZIP that is not a Word document", () => {
-    const zip = makeZip({ "readme.txt": "hello" });
-    expect(msg(validateResume({ name: "resume.docx", bytes: zip }))).toBe(
-      resumeMessages.content,
-    );
-    const truncated = tinyDocx().slice(0, 40);
-    expect(msg(validateResume({ name: "resume.docx", bytes: truncated }))).toBe(
-      resumeMessages.content,
+      resumeMessages.type,
     );
   });
 
@@ -116,7 +100,7 @@ describe("validateResume", () => {
 describe("safeFilename", () => {
   it("keeps the basename only and strips unsafe characters", () => {
     expect(safeFilename("../../etc/passwd/Résumé <1>.pdf", "pdf")).toBe("R_sum_ _1.pdf");
-    expect(safeFilename("C:\\Users\\me\\cv.docx", "docx")).toBe("cv.docx");
+    expect(safeFilename("C:\\Users\\me\\cv.pdf", "pdf")).toBe("cv.pdf");
   });
   it("limits length to 80 and falls back to resume", () => {
     expect(safeFilename(`${"a".repeat(200)}.pdf`, "pdf").length).toBeLessThanOrEqual(80);

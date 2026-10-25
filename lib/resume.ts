@@ -3,8 +3,8 @@
  * decompressed. Shared by the browser (type and size only) and the API route
  * (full check including content signatures).
  *
- * NOT checked: viruses, macros or scripts inside a DOCX, or malicious PDFs.
- * A file that passes is a PDF or a ZIP that looks like a Word document. It is
+ * NOT checked: viruses or malicious PDFs (scripts, links, exploits).
+ * A file that passes is a file that starts like a PDF. It is
  * emailed to the owner, who should open attachments in a safe viewer.
  */
 
@@ -13,26 +13,23 @@ export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 /** Whole request body cap: the file plus form fields and multipart framing. */
 export const APPLY_MAX_BODY_BYTES = RESUME_MAX_BYTES + 512 * 1024;
 
-export type ResumeExt = "pdf" | "docx";
+export type ResumeExt = "pdf";
 
 /**
- * The ONE place that decides which resume types are accepted. Switch to
- * PDF-only by changing this line to: ["pdf"]. The accept attribute, hint,
+ * The ONE place that decides which resume types are accepted. Resumes are PDF only
+ * (owner decision). To allow another type, extend ResumeExt and TYPE_INFO and add a
+ * content check in validateResume. The accept attribute, hint,
  * error messages, form note, privacy text and checks all derive from it.
  */
-export const RESUME_TYPES: readonly ResumeExt[] = ["pdf", "docx"];
+export const RESUME_TYPES: readonly ResumeExt[] = ["pdf"];
 
 const TYPE_INFO: Record<ResumeExt, { mime: string; label: string }> = {
   pdf: { mime: "application/pdf", label: "PDF" },
-  docx: {
-    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    label: "DOCX",
-  },
 };
 
-/** "PDF", or "PDF or DOCX". */
+/** "PDF". */
 export const RESUME_LABEL = RESUME_TYPES.map((t) => TYPE_INFO[t].label).join(" or ");
-/** "a PDF file", or "a PDF or DOCX file". */
+/** "a PDF file". */
 export const RESUME_FILE_PHRASE = `a ${RESUME_LABEL} file`;
 export const RESUME_ACCEPT = [
   ...RESUME_TYPES.map((t) => `.${t}`),
@@ -114,48 +111,6 @@ function isPdf(b: Uint8Array): boolean {
   return startsWith(b, [0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
 }
 
-/**
- * DOCX is a ZIP. Read only the end-of-central-directory record and the entry
- * names in the central directory; require "[Content_Types].xml" and at least
- * one "word/" entry. Nothing is decompressed.
- */
-function isDocx(b: Uint8Array): boolean {
-  if (!startsWith(b, [0x50, 0x4b, 0x03, 0x04])) return false; // PK\x03\x04
-  const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
-  // EOCD is within the last 22 + 65535 bytes.
-  let eocd = -1;
-  for (let i = b.length - 22; i >= Math.max(0, b.length - 22 - 65535); i--) {
-    if (view.getUint32(i, true) === 0x06054b50) {
-      eocd = i;
-      break;
-    }
-  }
-  if (eocd < 0) return false;
-  const entries = view.getUint16(eocd + 10, true);
-  const cdSize = view.getUint32(eocd + 12, true);
-  const cdOffset = view.getUint32(eocd + 16, true);
-  if (cdOffset + cdSize > eocd || entries === 0 || entries > 20000) return false;
-
-  let pos = cdOffset;
-  let hasTypes = false;
-  let hasWord = false;
-  const decoder = new TextDecoder("utf-8");
-  for (let n = 0; n < entries; n++) {
-    if (pos + 46 > cdOffset + cdSize || view.getUint32(pos, true) !== 0x02014b50) {
-      return false;
-    }
-    const nameLen = view.getUint16(pos + 28, true);
-    const extraLen = view.getUint16(pos + 30, true);
-    const commentLen = view.getUint16(pos + 32, true);
-    if (pos + 46 + nameLen > cdOffset + cdSize) return false;
-    const name = decoder.decode(b.subarray(pos + 46, pos + 46 + nameLen));
-    if (name === "[Content_Types].xml") hasTypes = true;
-    if (name.startsWith("word/")) hasWord = true;
-    pos += 46 + nameLen + extraLen + commentLen;
-  }
-  return hasTypes && hasWord;
-}
-
 export type ResumeCheck =
   | {
       ok: true;
@@ -192,7 +147,7 @@ export function validateResume(
     }
     return meta;
   }
-  const good = meta.ext === "pdf" ? isPdf(file.bytes) : isDocx(file.bytes);
+  const good = isPdf(file.bytes);
   if (!good) return { ok: false, message: resumeMessages.content };
   return {
     ok: true,

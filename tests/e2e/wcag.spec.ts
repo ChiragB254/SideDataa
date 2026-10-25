@@ -1,11 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { tinyDocx, tinyPdf } from "../fixtures/files";
-import {
-  RESUME_ACCEPT,
-  RESUME_HINT,
-  resumeMessages,
-  RESUME_TYPES,
-} from "../../lib/resume";
+import { tinyPdf } from "../fixtures/files";
+import { RESUME_ACCEPT, RESUME_HINT, resumeMessages } from "../../lib/resume";
 
 const routes = [
   "/",
@@ -494,9 +489,13 @@ test.describe("careers resume upload", () => {
     await ctx.close();
   });
 
-  test("docx fixture is a real zip", () => {
-    test.skip(!RESUME_TYPES.includes("docx"), "DOCX not accepted");
-    const b = tinyDocx();
-    expect([b[0], b[1], b[2], b[3]]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+  test("a DOCX file is rejected: resumes are PDF only", async ({ page }) => {
+    await page.goto("/careers");
+    await page.getByLabel(/^Resume/).setInputFiles({
+      name: "cv.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    });
+    await expect(page.getByText("Resumes must be a PDF file.")).toBeVisible();
   });
 });
