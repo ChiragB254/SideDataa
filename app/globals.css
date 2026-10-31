@@ -345,12 +345,3 @@
     scroll-behavior: auto !important;
   }
 }
-
-/* Estimator: the headline card stays in view beside the inputs on wide, tall screens.
-   It sits in its own column, so it never covers a focused field. */
-@media (min-width: 64rem) and (min-height: 45rem) {
-  .est-sticky {
-    position: sticky;
-    top: 1rem;
-  }
-}

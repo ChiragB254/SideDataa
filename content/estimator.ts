@@ -10,9 +10,9 @@ export const estimatorPage = {
   /** TODO(owner): update when the copy or the model changes. */
   updatedISO: "2026-10-31",
   updatedLabel: "31 October 2026",
-  title: "AI savings and growth estimator: a free planning calculator",
+  title: "Free AI savings and growth estimator",
   description:
-    "Estimate what automating a workflow with AI could save, what it would cost to build and run, and when it could pay back. Free, runs in your browser, nothing is stored.",
+    "Estimate what automating a workflow with AI could save, what it would cost to build and run, and when it could pay back. Free, in your browser.",
   answer: [
     "This free estimator works out roughly what automating one workflow with AI could save, what it would cost to build and run, when it could pay back, and how the next three years compare with doing nothing. It is for owners and managers weighing a first AI project.",
     "It is a planning calculator, not a forecast or a quote. It turns the numbers you enter into arithmetic and shows its working. It runs in your browser, and nothing you type is sent, stored or put in the web address.",

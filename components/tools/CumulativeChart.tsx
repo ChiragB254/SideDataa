@@ -137,7 +137,7 @@ export function CumulativeChart({ est, f }: { est: Estimate; f: Formatters }) {
                 strokeWidth="2"
               />
             </svg>
-            <span>Expected payback, month {exp.payback}</span>
+            <span>As entered payback, month {exp.payback}</span>
           </li>
         ) : null}
       </ul>

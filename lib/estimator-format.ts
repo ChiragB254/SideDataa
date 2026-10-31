@@ -98,6 +98,11 @@ export function paybackText(payback: number | null): string {
   return payback === null ? `not within ${HORIZON} months` : `month ${payback}`;
 }
 
+/** Payback for a scenario, or a plain note when there is nothing to compare. */
+export function paybackOf(s: ScenarioResult): string {
+  return s.noEffect ? "nothing to compare" : paybackText(s.payback);
+}
+
 export function roiText(roi: number | null, f: Formatters): string {
   if (roi === null) return "not available (no cost entered)";
   return f.percent(roi * 100, 0);
@@ -105,14 +110,20 @@ export function roiText(roi: number | null, f: Formatters): string {
 
 export function breakEvenText(b: BreakEven, f: Formatters): string {
   switch (b.kind) {
+    case "nothing":
+      return "Nothing to compare: enter a build or run cost and some savings.";
+    case "no-savings":
+      return `The savings multiplier for the As entered case is 0, so it counts no savings and cannot cover the costs. Raise the multiplier above 0 to see a break-even share.`;
     case "already":
-      return `The Expected case breaks even over ${HORIZON} months even if AI fully handles none of the tasks, because assisted tasks, growth or error savings already cover the cost.`;
+      return `The As entered case breaks even over ${HORIZON} months even if AI fully handles none of the tasks, because assisted tasks, growth or error savings already cover the cost.`;
+    case "fewer":
+      return `Assisted tasks, growth or error savings already cover the costs without any fully handled tasks, but at your current share each fully handled task adds net cost, so the ${HORIZON}-month total ends below zero. Fewer fully handled tasks, or less review time, would do better.`;
     case "needed":
-      return `AI would need to fully handle about ${f.percent(Math.ceil(b.fullSharePct * 10) / 10, 1)} of tasks for the Expected case to break even over ${HORIZON} months, with your other inputs unchanged.`;
+      return `AI would need to fully handle about ${f.percent(Math.ceil(b.fullSharePct * 10) / 10, 1)} of tasks for the As entered case to break even over ${HORIZON} months, with your other inputs unchanged.`;
     case "unreachable":
-      return `With your other inputs unchanged, the Expected case does not break even over ${HORIZON} months even if AI fully handles every task not set aside as assisted.`;
+      return `With your other inputs unchanged, the As entered case does not break even over ${HORIZON} months even if AI fully handles every task not set aside as assisted.`;
     case "never":
-      return `Fully handling more tasks does not help the Expected case: review time costs as much as it saves per task. Reduce review time, run cost or build cost, or look at a different workflow.`;
+      return `Fully handling more tasks does not help the As entered case: review time costs as much as it saves per task. Reduce review time, run cost or build cost, or look at a different workflow.`;
   }
 }
 
@@ -120,13 +131,30 @@ export function breakEvenText(b: BreakEven, f: Formatters): string {
 export function announcement(est: Estimate, f: Formatters): string {
   const e = est.expected;
   const net = e.fullMonthlyNet;
-  return `Expected case: net ${net >= 0 ? "saving" : "cost"} per month ${f.money(
+  if (e.noEffect)
+    return "As entered case: nothing to compare. Enter a build or run cost and some savings.";
+  return `As entered case: net ${net >= 0 ? "saving" : "cost"} per month ${f.money(
     Math.abs(net),
   )} at full adoption, payback ${e.payback === null ? `not within ${HORIZON} months` : `in month ${e.payback}`}.`;
 }
 
-export function invalidAnnouncement(count: number): string {
-  return `Results paused: ${count} ${count === 1 ? "field needs" : "fields need"} attention.`;
+/** Short reason for the live region, from a full validation message. */
+export function problemReason(message: string): string {
+  if (/Enter a number|must be a number/.test(message)) return "needs a number";
+  if (/whole number/.test(message)) return "needs a whole number";
+  if (/100%/.test(message)) return "pushes the shares over 100%";
+  if (/at least|at most/.test(message)) return "is outside the allowed range";
+  return "needs attention";
+}
+
+/** Names the fields, for example "Results paused: Tasks per month needs a number." */
+export function invalidAnnouncement(
+  problems: { label: string; reason: string }[],
+): string {
+  if (problems.length === 0) return "Results paused.";
+  const shown = problems.slice(0, 3).map((p) => `${p.label} ${p.reason}`);
+  const more = problems.length - shown.length;
+  return `Results paused: ${shown.join("; ")}${more > 0 ? `; and ${more} more` : ""}.`;
 }
 
 /* ------------------------------------------------------------------ explanation */
@@ -169,13 +197,13 @@ export function explainSteps(est: Estimate, f: Formatters): Step[] {
       title: "Error and growth effects (only if you entered them)",
       formula:
         "(errors before - errors after) x cost per error; extra units x value x share converted",
-      working: `Errors: (${f.number(n.errorsBefore, 0)} - ${f.number(n.errorsAfter, 0)}) x ${f.money(n.costPerError)} = ${f.money(b.errorSavings)}. Growth: ${f.number(n.extraUnits, 0)} x ${f.money(n.valuePerUnit)} x ${f.percent(n.realisationPct)} = ${f.money(b.growthValue)}.`,
+      working: `Errors: (${f.number(n.errorsBefore, 0)} - ${f.number(n.errorsAfter, 0)}) x ${f.money(n.costPerError)} = ${f.money(b.errorSavings)}${b.errorExtraCost > 0 ? ` (errors rise, so this is a cost of ${f.money(b.errorExtraCost)} a month, not a saving)` : ""}. Growth: ${f.number(n.extraUnits, 0)} x ${f.money(n.valuePerUnit)} x ${f.percent(n.realisationPct)} = ${f.money(b.growthValue)}.`,
     },
     {
-      title: "Net per month at full adoption (Expected multipliers)",
+      title: "Net per month at full adoption (As entered multipliers)",
       formula:
-        "(gross savings + errors + growth) x savings multiplier - (review + run cost) x cost multiplier",
-      working: `(${f.money(b.grossLabourSavings)} + ${f.money(b.errorSavings)} + ${f.money(b.growthValue)}) x ${f.number(e.savingsMult, 2)} - (${f.money(b.reviewCost)} + ${f.money(b.runCost)}) x ${f.number(e.costMult, 2)} = ${f.money(e.fullMonthlyNet)} a month, or ${f.money(e.annualNet)} a year.`,
+        "(labour savings + error savings + growth) x savings multiplier - (review + extra-error cost + run cost) x cost multiplier. The savings multiplier only scales savings. Extra errors are a cost, so they use the cost multiplier.",
+      working: `(${f.money(b.grossLabourSavings)} + ${f.money(Math.max(0, b.errorSavings))} + ${f.money(b.growthValue)}) x ${f.number(e.savingsMult, 2)} - (${f.money(b.reviewCost)} + ${f.money(b.errorExtraCost)} + ${f.money(b.runCost)}) x ${f.number(e.costMult, 2)} = ${f.money(e.fullMonthlyNet)} a month, or ${f.money(e.annualNet)} a year.`,
     },
     {
       title: "Ramp-up",
@@ -191,7 +219,7 @@ export function explainSteps(est: Estimate, f: Formatters): Step[] {
     {
       title: "Payback",
       formula: "the first month where the cumulative position reaches zero",
-      working: `Expected case: ${paybackText(e.payback)}.`,
+      working: `As entered case: ${paybackOf(e)}.`,
     },
     {
       title: `Simple ROI over ${HORIZON} months`,
@@ -233,21 +261,21 @@ export function buildSummaryText(
     lines.push(`- ${s.name}: x${s.savingsMult} / x${s.costMult}`);
   }
   lines.push("");
-  lines.push("Results (Expected case unless stated)");
+  lines.push("Results (As entered case unless stated)");
   const b = est.base;
   lines.push(`- Gross time saved per month: ${f.hours(b.grossHoursSaved)}`);
   lines.push(`- Review time per month: ${f.hours(b.reviewHours)}`);
   lines.push(`- Gross savings per month: ${f.money(b.grossBenefit)}`);
   lines.push(`- Net per month at full adoption: ${f.money(est.expected.fullMonthlyNet)}`);
   lines.push(`- Net per year at full adoption: ${f.money(est.expected.annualNet)}`);
-  lines.push(`- Payback: ${paybackText(est.expected.payback)}`);
+  lines.push(`- Payback: ${paybackOf(est.expected)}`);
   lines.push(`- ROI over ${HORIZON} months: ${roiText(est.expected.roi36, f)}`);
   lines.push(`- ${breakEvenText(est.breakEven, f)}`);
   lines.push("");
   lines.push("Cumulative net against doing nothing");
   for (const s of est.scenarios) {
     lines.push(
-      `- ${s.name}: 12 months ${f.money(s.cum12)}; 24 months ${f.money(s.cum24)}; 36 months ${f.money(s.cum36)}; payback ${paybackText(s.payback)}`,
+      `- ${s.name}: 12 months ${f.money(s.cum12)}; 24 months ${f.money(s.cum24)}; 36 months ${f.money(s.cum36)}; payback ${paybackOf(s)}`,
     );
   }
   lines.push("");
@@ -270,11 +298,11 @@ function inputText(k: FieldKey, n: Numbers, f: Formatters): string {
 
 /**
  * Text cells that start with = + - @ tab or CR can run as formulas in spreadsheets.
- * Prefix them with an apostrophe-free guard: a leading space is enough to stop it and
- * keeps the text readable. Numeric cells are written as numbers and never pass here.
+ * Following the OWASP guidance, such cells get a leading single quote. Numeric cells are
+ * written as numbers and never pass through here.
  */
 export function csvText(value: string): string {
-  const guarded = /^[=+\-@\t\r]/.test(value) ? ` ${value}` : value;
+  const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
   return csvCell(guarded);
 }
 
@@ -334,15 +362,13 @@ export function buildCsv(est: Estimate, currency: Currency, dateLabel: string): 
     ),
   );
   row();
-  row(t("Results"), t("Conservative"), t("Expected"), t("Optimistic"));
+  row(t("Results"), t("Conservative"), t("As entered"), t("Optimistic"));
   const sc = est.scenarios;
   row(t("Net per month at full adoption"), ...sc.map((s) => num(s.fullMonthlyNet)));
   row(t("Net per year at full adoption"), ...sc.map((s) => num(s.annualNet)));
   row(
     t("Payback month"),
-    ...sc.map((s) =>
-      s.payback === null ? t(`not within ${HORIZON} months`) : String(s.payback),
-    ),
+    ...sc.map((s) => (s.payback === null ? t(paybackOf(s)) : String(s.payback))),
   );
   row(t("Cumulative net after 12 months"), ...sc.map((s) => num(s.cum12)));
   row(t("Cumulative net after 24 months"), ...sc.map((s) => num(s.cum24)));
@@ -368,7 +394,7 @@ export function buildCsv(est: Estimate, currency: Currency, dateLabel: string): 
 }
 
 export function describeSeries(s: ScenarioResult, f: Formatters): string {
-  return `${s.name}: ${f.money(s.cum12)} at 12 months, ${f.money(s.cum24)} at 24, ${f.money(s.cum36)} at 36; payback ${paybackText(s.payback)}.`;
+  return `${s.name}: ${f.money(s.cum12)} at 12 months, ${f.money(s.cum24)} at 24, ${f.money(s.cum36)} at 36; payback ${paybackOf(s)}.`;
 }
 
 /** The sentence under the chart that says what it shows. */

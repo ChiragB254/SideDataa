@@ -31,8 +31,12 @@ import {
  *   payback: -13752 + 924 x j >= 0 -> j = 15 -> month 18
  *   cum12 = -13752 + 924 x 9 = -5436; cum24 = ... x 21 = 5652; cum36 = ... x 33 = 16740
  */
+// The golden hand-worked case uses 40% fully handled and 50% converted growth. The shipped
+// example values are more cautious (25% and 25%); they have their own tests below.
+const GOLDEN: Partial<FieldValues> = { fullSharePct: "40", realisationPct: "50" };
+
 function nums(over: Partial<FieldValues> = {}): Numbers {
-  const v = validateInputs({ ...defaultValues, ...over });
+  const v = validateInputs({ ...defaultValues, ...GOLDEN, ...over });
   if (!v.ok) throw new Error(JSON.stringify(v.errors));
   return v.numbers;
 }
@@ -45,6 +49,16 @@ describe("validation and parsing", () => {
     expect(parseNumber("1 250")).toBe(1250);
   });
 
+  it("accepts a leading or trailing decimal point", () => {
+    expect(parseNumber(".5")).toBe(0.5);
+    expect(parseNumber("5.")).toBe(5);
+    expect(parseNumber("0.5")).toBe(0.5);
+    expect(parseNumber(" .25 ")).toBe(0.25);
+    expect(validateInputs({ ...defaultValues, expSave: ".5", consCost: "2." }).ok).toBe(
+      true,
+    );
+  });
+
   it("rejects ambiguous or non-numeric text", () => {
     for (const bad of [
       "",
@@ -54,10 +68,13 @@ describe("validation and parsing", () => {
       "1e5",
       "NaN",
       "Infinity",
-      "12.",
-      ".5",
       "1,23,456",
       "0x10",
+      ".",
+      "+5",
+      "5.5.5",
+      "-.5",
+      ",5",
     ]) {
       expect(Number.isNaN(parseNumber(bad)), bad).toBe(true);
     }
@@ -144,11 +161,15 @@ describe("base calculation (hand-worked golden case)", () => {
     expect(x.monthlyNet).toBeCloseTo(1764 + 450 + 1000 - 240 - 600, 9);
   });
 
-  it("lets error cost go negative when errors rise", () => {
+  it("lets error savings go negative when errors rise, and counts that as a cost", () => {
     const x = computeBase(
       nums({ errorsBefore: "2", errorsAfter: "6", costPerError: "10" }),
     );
     expect(x.errorSavings).toBe(-40);
+    expect(x.errorExtraCost).toBe(40);
+    // Positive benefits only: labour savings 1764, no error saving, no growth.
+    expect(x.grossBenefit).toBeCloseTo(1764, 9);
+    expect(x.monthlyNet).toBeCloseTo(1764 - 240 - 40 - 600, 9);
   });
 });
 
@@ -259,7 +280,7 @@ describe("edge cases", () => {
     );
     expect(e.expected.fullMonthlyNet).toBe(0);
     expect(e.expected.payback).toBeNull();
-    expect(e.breakEven.kind).toBe("already");
+    expect(e.breakEven.kind).toBe("nothing");
     for (const s of e.scenarios)
       for (const r of s.rows) expect(Number.isFinite(r.cumulative)).toBe(true);
   });
@@ -340,5 +361,149 @@ describe("niceScale", () => {
     expect(niceScale(0, 0).ticks.length).toBeGreaterThan(1);
     expect(niceScale(NaN, 5).ticks.length).toBeGreaterThan(1);
     expect(niceScale(-0.3, 0.7).ticks).toContain(0);
+  });
+});
+
+describe("multiplier semantics", () => {
+  const errs = { errorsBefore: "2", errorsAfter: "6", costPerError: "10" } as const;
+
+  it("the savings multiplier never amplifies extra-error cost", () => {
+    const base = nums({ ...errs, expSave: "0", expCost: "1" });
+    const e = estimate(base).expected;
+    // savings x0: net = -(review 240 + extra errors 40 + run 600) = -880
+    expect(e.fullMonthlyNet).toBeCloseTo(-880, 9);
+    const big = estimate(nums({ ...errs, expSave: "5", expCost: "1" })).expected;
+    // savings x5 on positive benefit only: 1764 x 5 - 880 + 240... = 8820 - 880
+    expect(big.fullMonthlyNet).toBeCloseTo(1764 * 5 - 240 - 40 - 600, 9);
+  });
+
+  it("the cost multiplier scales extra-error cost with the other costs", () => {
+    const e = estimate(nums({ ...errs, expSave: "1", expCost: "2" })).expected;
+    expect(e.fullMonthlyNet).toBeCloseTo(1764 - (240 + 40 + 600) * 2, 9);
+    // The month-3 row carries the error cost at full adoption.
+    expect(rowAt(e, 3).errorCost).toBeCloseTo(80, 9);
+    expect(rowAt(e, 1).errorCost).toBeCloseTo(80 / 3, 9);
+  });
+
+  it("positive error savings are multiplied like other savings", () => {
+    const e = estimate(
+      nums({ errorsBefore: "20", errorsAfter: "5", costPerError: "30", expSave: "2" }),
+    ).expected;
+    expect(e.fullMonthlyNet).toBeCloseTo((1764 + 450) * 2 - 240 - 600, 9);
+  });
+});
+
+describe("payback is robust to floating-point drift", () => {
+  // Gross savings are exact to the cent (39.2 hours x an hourly cost with one decimal),
+  // and the build cost is exactly m months of that, so the true total in month m is 0.
+  // Summing month by month in floating point lands a hair below zero.
+  const exact = { reviewMinutes: "0", runCost: "0", rampMonths: "1" } as const;
+
+  it("finds month 18 (hourly 30.1, build 21238.56)", () => {
+    const e = estimate(
+      nums({ ...exact, hourlyCost: "30.1", buildCost: "21238.56" }),
+    ).expected;
+    const c = rowAt(e, 18).cumulative;
+    expect(c).toBeLessThan(0); // the drift this test guards against
+    expect(c).toBeGreaterThan(-0.005);
+    expect(e.payback).toBe(18);
+  });
+
+  it("finds month 5 (hourly 30.9, build 6056.40)", () => {
+    const e = estimate(
+      nums({ ...exact, hourlyCost: "30.9", buildCost: "6056.40" }),
+    ).expected;
+    const c = rowAt(e, 5).cumulative;
+    expect(c).toBeLessThan(0);
+    expect(c).toBeGreaterThan(-0.005);
+    expect(e.payback).toBe(5);
+  });
+
+  it("does not report payback when the total is genuinely short", () => {
+    // One cent more build cost than 18 months of savings: month 18 stays below zero.
+    const e = estimate(
+      nums({ ...exact, hourlyCost: "30.1", buildCost: "21238.57" }),
+    ).expected;
+    expect(rowAt(e, 18).cumulative).toBeCloseTo(-0.01, 6);
+    expect(e.payback).toBe(19);
+    expect(estimate(nums({ buildCost: "40000" })).expected.payback).toBeNull();
+  });
+});
+
+describe("shipped example values (neutral defaults)", () => {
+  const v = validateInputs(defaultValues);
+  if (!v.ok) throw new Error("defaults invalid");
+  const e = estimate(v.numbers);
+  const [cons, exp, opt] = e.scenarios;
+
+  it("use 25% fully handled, 30% assisted at 30% saving, 2 minutes review, 25% converted", () => {
+    expect(defaultValues.fullSharePct).toBe("25");
+    expect(defaultValues.assistSharePct).toBe("30");
+    expect(defaultValues.assistSavedPct).toBe("30");
+    expect(defaultValues.reviewMinutes).toBe("2");
+    expect(defaultValues.realisationPct).toBe("25");
+  });
+
+  it("base: 27.2 gross hours, 1224 gross savings, 150 review cost, 474 net a month", () => {
+    // fully handled 100; (100 x 12 + 120 x 12 x 0.3) / 60 = 27.2; x 45 = 1224
+    // review 100 x 2 / 60 = 3.333 h = 150; net 1224 - 150 - 600 = 474
+    expect(e.base.fullTasks).toBeCloseTo(100, 9);
+    expect(e.base.grossHoursSaved).toBeCloseTo(27.2, 9);
+    expect(e.base.grossLabourSavings).toBeCloseTo(1224, 9);
+    expect(e.base.reviewCost).toBeCloseTo(150, 9);
+    expect(e.base.monthlyNet).toBeCloseTo(474, 9);
+  });
+
+  it("As entered: payback month 34, 36-month net 990, ROI about 2.4%", () => {
+    // months 1..3 net -242, +116, +474; cumulative at month 3 = -14652; then +474 a month
+    expect(rowAt(exp, 1).net).toBeCloseTo(-242, 9);
+    expect(rowAt(exp, 2).net).toBeCloseTo(116, 9);
+    expect(rowAt(exp, 3).cumulative).toBeCloseTo(-14652, 9);
+    expect(exp.annualNet).toBeCloseTo(5688, 9);
+    expect(exp.payback).toBe(34);
+    expect(exp.cum12).toBeCloseTo(-10386, 9);
+    expect(exp.cum24).toBeCloseTo(-4698, 9);
+    expect(exp.cum36).toBeCloseTo(990, 9);
+    expect(exp.totalBenefit36).toBeCloseTo(42840, 6);
+    expect(exp.totalCost36).toBeCloseTo(41850, 6);
+    expect(exp.roi36).toBeCloseTo(990 / 41850, 9);
+  });
+
+  it("Conservative never pays back; Optimistic pays back in month 21 (exact zero)", () => {
+    expect(cons.fullMonthlyNet).toBeCloseTo(-363, 9);
+    expect(cons.payback).toBeNull();
+    expect(cons.cum36).toBeCloseTo(-32985, 9);
+    // month 3 cumulative -14040, then +780 a month: exactly zero after 18 more months
+    expect(rowAt(opt, 3).cumulative).toBeCloseTo(-14040, 9);
+    expect(opt.payback).toBe(21);
+    expect(opt.cum36).toBeCloseTo(11700, 9);
+  });
+
+  it("break-even needs about 24.06% fully handled", () => {
+    expect(e.breakEven.kind).toBe("needed");
+    if (e.breakEven.kind === "needed")
+      expect(e.breakEven.fullSharePct).toBeCloseTo(25260 / 1050, 9);
+  });
+});
+
+describe("break-even explanations", () => {
+  it("nothing to compare when every input has no effect", () => {
+    const e = estimate(
+      nums({ fullSharePct: "0", assistSharePct: "0", buildCost: "0", runCost: "0" }),
+    );
+    expect(e.expected.noEffect).toBe(true);
+    expect(e.breakEven.kind).toBe("nothing");
+    expect(e.expected.payback).toBeNull();
+  });
+
+  it("says savings are zero (not review time) when the savings multiplier is 0", () => {
+    const b = estimate(nums({ expSave: "0" })).breakEven;
+    expect(b.kind).toBe("no-savings");
+  });
+
+  it("'fewer' when assisted tasks already cover costs but full handling adds net cost", () => {
+    const e = estimate(nums({ buildCost: "0", runCost: "100", reviewMinutes: "20" }));
+    expect(e.breakEven.kind).toBe("fewer");
+    expect(e.expected.cum36).toBeLessThan(0);
   });
 });

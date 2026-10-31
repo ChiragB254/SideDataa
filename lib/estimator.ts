@@ -17,6 +17,13 @@
 
 export const HORIZON = 36;
 
+/**
+ * Payback counts as reached when the running total is within half a cent of zero or
+ * above. Month-by-month floating-point sums can land at -0.000000000003 when the true
+ * answer is exactly zero.
+ */
+export const PAYBACK_TOLERANCE = -0.005;
+
 export type FieldKey =
   | "tasksPerMonth"
   | "minutesPerTask"
@@ -108,7 +115,7 @@ export const fieldSpecs: Record<FieldKey, FieldSpec> = {
     unit: "% of tasks",
     min: 0,
     max: 100,
-    example: "40",
+    example: "25",
     hint: "Share of tasks the AI finishes without a person doing the work. A person still checks the output (see review time).",
   },
   assistSharePct: {
@@ -196,7 +203,7 @@ export const fieldSpecs: Record<FieldKey, FieldSpec> = {
     min: 0,
     max: 100,
     optional: true,
-    example: "50",
+    example: "25",
     hint: "Optional. Spare time does not turn into sales on its own. Be cautious here.",
   },
   errorsBefore: {
@@ -232,8 +239,8 @@ export const fieldSpecs: Record<FieldKey, FieldSpec> = {
   },
   consSave: multiplierSpec("consSave", "Conservative: savings multiplier", "0.5"),
   consCost: multiplierSpec("consCost", "Conservative: cost multiplier", "1.3"),
-  expSave: multiplierSpec("expSave", "Expected: savings multiplier", "1"),
-  expCost: multiplierSpec("expCost", "Expected: cost multiplier", "1"),
+  expSave: multiplierSpec("expSave", "As entered: savings multiplier", "1"),
+  expCost: multiplierSpec("expCost", "As entered: cost multiplier", "1"),
   optSave: multiplierSpec("optSave", "Optimistic: savings multiplier", "1.25"),
   optCost: multiplierSpec("optCost", "Optimistic: cost multiplier", "1"),
 };
@@ -282,7 +289,7 @@ export const scenarioFieldKeys: {
   cost: FieldKey;
 }[] = [
   { id: "conservative", name: "Conservative", save: "consSave", cost: "consCost" },
-  { id: "expected", name: "Expected", save: "expSave", cost: "expCost" },
+  { id: "expected", name: "As entered", save: "expSave", cost: "expCost" },
   { id: "optimistic", name: "Optimistic", save: "optSave", cost: "optCost" },
 ];
 
@@ -309,10 +316,10 @@ export const OTHER_LABEL_MAX = 6;
 
 /* ------------------------------------------------------------------ validation */
 
-const plainNumber = /^\d+(\.\d+)?$/;
+const plainNumber = /^(\d+\.?\d*|\.\d+)$/;
 const groupedNumber = /^\d{1,3}(,\d{3})+(\.\d+)?$/;
 
-/** Parse what a person typed. Accepts 1250, 1250.5 and 1,250.50. Returns NaN otherwise. */
+/** Parse what a person typed. Accepts 1250, 1250.5, .5, 5. and 1,250.50. Returns NaN otherwise. */
 export function parseNumber(text: string): number {
   const t = text.trim().replace(/\s+/g, "");
   if (plainNumber.test(t) || groupedNumber.test(t)) {
@@ -401,9 +408,16 @@ export type Base = {
   grossLabourSavings: number;
   /** reviewHours x hourly cost. */
   reviewCost: number;
+  /** (errors before - errors after) x cost per error. Negative when errors rise. */
   errorSavings: number;
+  /** Cost of extra errors per month (the negative part of errorSavings, as a positive number). */
+  errorExtraCost: number;
   growthValue: number;
-  /** Labour savings + error savings + growth value, before any cost. */
+  /**
+   * Positive benefits only: labour savings + error savings (if positive) + growth value.
+   * The savings multiplier applies to this. Extra-error cost is a cost, so it is
+   * handled with review and run cost and scaled by the cost multiplier instead.
+   */
   grossBenefit: number;
   runCost: number;
   buildCost: number;
@@ -424,7 +438,8 @@ export function computeBase(n: Numbers): Base {
   const reviewCost = reviewHours * n.hourlyCost;
   const errorSavings = (n.errorsBefore - n.errorsAfter) * n.costPerError;
   const growthValue = (n.extraUnits * n.valuePerUnit * n.realisationPct) / 100;
-  const grossBenefit = grossLabourSavings + errorSavings + growthValue;
+  const errorExtraCost = Math.max(0, -errorSavings);
+  const grossBenefit = grossLabourSavings + Math.max(0, errorSavings) + growthValue;
   return {
     baselineHours,
     baselineCost: baselineHours * n.hourlyCost,
@@ -436,11 +451,12 @@ export function computeBase(n: Numbers): Base {
     grossLabourSavings,
     reviewCost,
     errorSavings,
+    errorExtraCost,
     growthValue,
     grossBenefit,
     runCost: n.runCost,
     buildCost: n.buildCost,
-    monthlyNet: grossBenefit - reviewCost - n.runCost,
+    monthlyNet: grossBenefit - reviewCost - errorExtraCost - n.runCost,
   };
 }
 
@@ -461,6 +477,7 @@ export type MonthRow = {
   adoption: number;
   benefit: number;
   reviewCost: number;
+  errorCost: number;
   runCost: number;
   net: number;
   cumulative: number;
@@ -485,6 +502,8 @@ export type ScenarioResult = {
   totalCost36: number;
   /** (benefit - cost) / cost over 36 months, or null when there is no cost. */
   roi36: number | null;
+  /** True when this scenario has no benefit and no cost at all (nothing to compare). */
+  noEffect: boolean;
 };
 
 export function computeScenario(
@@ -502,6 +521,7 @@ export function computeScenario(
       adoption: 0,
       benefit: 0,
       reviewCost: 0,
+      errorCost: 0,
       runCost: 0,
       net: -build,
       cumulative: -build,
@@ -514,16 +534,18 @@ export function computeScenario(
     const adoption = adoptionAt(k, n.rampMonths);
     const benefit = adoption * base.grossBenefit * savingsMult;
     const review = adoption * base.reviewCost * costMult;
+    const errorCost = adoption * base.errorExtraCost * costMult;
     const run = base.runCost * costMult;
-    const net = benefit - review - run;
+    const net = benefit - review - errorCost - run;
     cumulative += net;
     totalBenefit += benefit;
-    totalCost += review + run;
+    totalCost += review + errorCost + run;
     rows.push({
       month: k,
       adoption,
       benefit,
       reviewCost: review,
+      errorCost,
       runCost: run,
       net,
       cumulative,
@@ -531,12 +553,13 @@ export function computeScenario(
   }
   const fullMonthlyNet =
     base.grossBenefit * savingsMult -
+    base.errorExtraCost * costMult -
     base.reviewCost * costMult -
     base.runCost * costMult;
   let payback: number | null = null;
   if (fullMonthlyNet > 0) {
     for (let k = 1; k <= HORIZON; k++) {
-      if (rowAt({ rows }, k).cumulative >= 0) {
+      if (rowAt({ rows }, k).cumulative >= PAYBACK_TOLERANCE) {
         payback = k;
         break;
       }
@@ -557,11 +580,19 @@ export function computeScenario(
     totalBenefit36: totalBenefit,
     totalCost36: totalCost,
     roi36: totalCost > 0 ? (totalBenefit - totalCost) / totalCost : null,
+    noEffect: totalBenefit === 0 && totalCost === 0,
   };
 }
 
 export type BreakEven =
+  /** Nothing entered has any benefit or cost, so there is nothing to compare. */
+  | { kind: "nothing" }
+  /** The savings multiplier is 0, so no share of fully handled tasks can cover the costs. */
+  | { kind: "no-savings" }
+  /** Break-even without any fully handled tasks, and the current share is no worse. */
   | { kind: "already" }
+  /** Break-even without fully handled tasks, but the current share ends below zero. */
+  | { kind: "fewer" }
   | { kind: "needed"; fullSharePct: number }
   /** Even handling every task that is not set aside for assist does not break even. */
   | { kind: "unreachable" }
@@ -569,29 +600,33 @@ export type BreakEven =
   | { kind: "never" };
 
 /**
- * Share of tasks AI must fully handle for the Expected case to break even over 36
+ * Share of tasks AI must fully handle for the As-entered case to break even over 36
  * months, holding every other input fixed. The 36-month cumulative is a straight line
  * in that share, so two evaluations are enough.
  */
 export function breakEvenFullShare(
   n: Numbers,
-  expected: { save: number; cost: number },
+  asEntered: { save: number; cost: number },
 ): BreakEven {
-  const at = (pct: number) => {
+  const run = (pct: number) => {
     const nn = { ...n, fullSharePct: pct };
     return computeScenario(
       nn,
       computeBase(nn),
       "expected",
-      "Expected",
-      expected.save,
-      expected.cost,
-    ).cum36;
+      "As entered",
+      asEntered.save,
+      asEntered.cost,
+    );
   };
-  const c0 = at(0);
-  if (c0 >= 0) return { kind: "already" };
-  const c100 = at(100);
-  const slope = (c100 - c0) / 100;
+  const now = run(n.fullSharePct);
+  if (now.noEffect) return { kind: "nothing" };
+  const c0 = run(0).cum36;
+  if (c0 >= PAYBACK_TOLERANCE) {
+    return now.cum36 < PAYBACK_TOLERANCE ? { kind: "fewer" } : { kind: "already" };
+  }
+  if (asEntered.save === 0) return { kind: "no-savings" };
+  const slope = (run(100).cum36 - c0) / 100;
   if (!(slope > 0)) return { kind: "never" };
   const pct = -c0 / slope;
   if (pct > 100 - n.assistSharePct + 1e-9) return { kind: "unreachable" };

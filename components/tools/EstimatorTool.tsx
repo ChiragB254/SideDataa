@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import {
   HORIZON,
   OTHER_LABEL_MAX,
@@ -27,7 +27,8 @@ import {
   explainSteps,
   invalidAnnouncement,
   makeFormatters,
-  paybackText,
+  paybackOf,
+  problemReason,
   roiText,
   type Formatters,
 } from "@/lib/estimator-format";
@@ -118,6 +119,11 @@ export function EstimatorTool() {
   const [status, setStatus] = useState("");
   const [fallbackText, setFallbackText] = useState("");
 
+  const [settled, setSettled] = useState({
+    values: defaultValues,
+    currency: defaultCurrency,
+  });
+
   const validation = useMemo(() => validateInputs(values), [values]);
   const currencyError = validateCurrency(currency);
   const f = useMemo(() => makeFormatters(currency), [currency]);
@@ -127,20 +133,50 @@ export function EstimatorTool() {
     [validation, currencyError],
   );
 
+  // A field shows its error once it has been left (blur), or once the value has stopped
+  // changing for about 600 ms, so pending problems are never hidden for long.
+  useEffect(() => {
+    if (!interacted) return;
+    const t = setTimeout(() => setSettled({ values, currency }), 600);
+    return () => clearTimeout(t);
+  }, [values, currency, interacted]);
+  const settledErrors = useMemo(
+    () => validateInputs(settled.values).errors,
+    [settled.values],
+  );
+  const settledCurrencyError = validateCurrency(settled.currency);
+
+  const shownError = (k: FieldKey): string | null =>
+    validation.errors[k] && (touched[k] || settledErrors[k])
+      ? validation.errors[k]!
+      : null;
+  const currencyShown: string | null =
+    currencyError && (touched["currency"] || settledCurrencyError) ? currencyError : null;
+
   const errorList = useMemo(() => {
     const out: { id: string; message: string }[] = [];
-    if (currencyError && touched["currency"])
-      out.push({ id: "est-currency-label", message: currencyError });
+    if (currencyShown) out.push({ id: "est-currency-label", message: currencyShown });
     for (const key of Object.keys(validation.errors) as FieldKey[]) {
-      if (touched[key]) out.push({ id: idFor(key), message: validation.errors[key]! });
+      if (touched[key] || settledErrors[key])
+        out.push({ id: idFor(key), message: validation.errors[key]! });
     }
     return out;
-  }, [validation, currencyError, touched]);
+  }, [validation, currencyShown, touched, settledErrors]);
 
-  const totalProblems = Object.keys(validation.errors).length + (currencyError ? 1 : 0);
+  const problems = useMemo(() => {
+    const out: { label: string; reason: string }[] = [];
+    if (currencyError)
+      out.push({ label: "Currency label", reason: "needs a symbol or label" });
+    for (const key of Object.keys(validation.errors) as FieldKey[])
+      out.push({
+        label: fieldSpecs[key].label,
+        reason: problemReason(validation.errors[key]!),
+      });
+    return out;
+  }, [validation, currencyError]);
 
   // One settled, polite announcement about 600 ms after the last change.
-  const liveText = est ? announcement(est, f) : invalidAnnouncement(totalProblems);
+  const liveText = est ? announcement(est, f) : invalidAnnouncement(problems);
   useEffect(() => {
     if (!interacted) return;
     const t = setTimeout(() => setAnnounce(liveText), 600);
@@ -159,6 +195,7 @@ export function EstimatorTool() {
     setValues(defaultValues);
     setCurrency(defaultCurrency);
     setTouched({});
+    setSettled({ values: defaultValues, currency: defaultCurrency });
     setFallbackText("");
     setInteracted(true);
     setStatus("Reset to the example values.");
@@ -201,11 +238,16 @@ export function EstimatorTool() {
     document.getElementById(id)?.focus();
   };
 
+  const jumpToResults = (ev: React.MouseEvent) => {
+    ev.preventDefault();
+    document.getElementById("est-results")?.focus();
+  };
+
   const currencyLabel = f.currencyName;
   const e = est?.expected;
 
   return (
-    <div>
+    <div className="@container">
       <p
         aria-live="polite"
         aria-atomic="true"
@@ -215,14 +257,23 @@ export function EstimatorTool() {
         {announce}
       </p>
 
-      <div className="grid gap-10 lg:grid-cols-12 lg:gap-x-12">
+      <div className="grid gap-10 @5xl:grid-cols-12 @5xl:gap-x-12">
         <form
           aria-label="Estimator inputs"
           noValidate
           onSubmit={(ev) => ev.preventDefault()}
-          className="min-w-0 lg:col-span-7"
+          className="min-w-0 @5xl:col-span-7"
         >
-          <p className="border border-rule bg-wash px-4 py-3 text-[0.9375rem] text-ink-soft">
+          <p className="@5xl:hidden">
+            <a
+              href="#est-results"
+              onClick={jumpToResults}
+              className="link inline-flex min-h-11 items-center font-medium"
+            >
+              Jump to results
+            </a>
+          </p>
+          <p className="mt-2 border border-rule bg-wash px-4 py-3 text-[0.9375rem] text-ink-soft">
             Every starting value is an example. Replace each one with your own figures.
             Everything is calculated in your browser. Nothing you enter is sent anywhere,
             saved, or put in the web address, and a refresh clears it.
@@ -305,21 +356,21 @@ export function EstimatorTool() {
                     }}
                     onBlur={() => touch("currency")}
                     aria-describedby={
-                      currencyError && touched["currency"]
+                      currencyShown
                         ? "est-currency-label-hint est-currency-label-error"
                         : "est-currency-label-hint"
                     }
-                    aria-invalid={currencyError && touched["currency"] ? true : undefined}
+                    aria-invalid={currencyShown ? true : undefined}
                     className="field-control mt-1.5 !w-40 max-w-full"
                   />
-                  {currencyError && touched["currency"] ? (
+                  {currencyShown ? (
                     <p
                       id="est-currency-label-error"
                       className="mt-1.5 text-sm font-medium text-danger"
                     >
                       <span aria-hidden="true">Error: </span>
                       <span className="sr-only">Error: </span>
-                      {currencyError}
+                      {currencyShown}
                     </p>
                   ) : null}
                 </div>
@@ -328,25 +379,45 @@ export function EstimatorTool() {
           </fieldset>
 
           {fieldGroups.map((g) => (
-            <fieldset key={g.id} className="mt-8 min-w-0">
-              <legend className="mb-1 w-full border-t border-rule pt-5 font-serif text-xl">
-                {g.legend}
-              </legend>
-              {g.note ? <p className="mt-1 text-sm text-muted">{g.note}</p> : null}
-              <div className="mt-4 space-y-6">
-                {g.keys.map((k) => (
-                  <NumberField
-                    key={k}
-                    spec={fieldSpecs[k]}
-                    value={values[k]}
-                    error={touched[k] ? (validation.errors[k] ?? null) : null}
-                    currencyLabel={currencyLabel || "…"}
-                    onChange={(v) => edit(k, v)}
-                    onBlur={() => touch(k)}
-                  />
-                ))}
-              </div>
-            </fieldset>
+            <Fragment key={g.id}>
+              <fieldset className="mt-8 min-w-0">
+                <legend className="mb-1 w-full border-t border-rule pt-5 font-serif text-xl">
+                  {g.legend}
+                </legend>
+                {g.note ? <p className="mt-1 text-sm text-muted">{g.note}</p> : null}
+                <div className="mt-4 space-y-6">
+                  {g.keys.map((k) => (
+                    <NumberField
+                      key={k}
+                      spec={fieldSpecs[k]}
+                      value={values[k]}
+                      error={shownError(k)}
+                      currencyLabel={currencyLabel || "…"}
+                      onChange={(v) => edit(k, v)}
+                      onBlur={() => touch(k)}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+              {g.id === "costs" ? (
+                <div
+                  data-testid="compact-summary"
+                  className="mt-8 border border-ink bg-white p-4 @5xl:hidden"
+                >
+                  <p className="text-sm font-medium text-muted">Current result</p>
+                  <p className="mt-1">{liveText}</p>
+                  <p className="mt-1">
+                    <a
+                      href="#est-results"
+                      onClick={jumpToResults}
+                      className="link inline-flex min-h-11 items-center font-medium"
+                    >
+                      See the full results
+                    </a>
+                  </p>
+                </div>
+              ) : null}
+            </Fragment>
           ))}
 
           <fieldset className="mt-8 min-w-0">
@@ -362,13 +433,13 @@ export function EstimatorTool() {
             </p>
             <div className="mt-4 space-y-8">
               {scenarioFieldKeys.map((s) => (
-                <div key={s.id} className="grid gap-6 sm:grid-cols-2">
+                <div key={s.id} className="grid gap-6 @2xl:grid-cols-2">
                   {[s.save, s.cost].map((k) => (
                     <NumberField
                       key={k}
                       spec={fieldSpecs[k]}
                       value={values[k]}
-                      error={touched[k] ? (validation.errors[k] ?? null) : null}
+                      error={shownError(k)}
                       currencyLabel={currencyLabel || "…"}
                       onChange={(v) => edit(k, v)}
                       onBlur={() => touch(k)}
@@ -381,21 +452,25 @@ export function EstimatorTool() {
         </form>
 
         <aside
-          aria-labelledby={`${uid}-headline`}
-          className="est-sticky min-w-0 self-start lg:col-span-5"
+          aria-labelledby="est-results"
+          className="min-w-0 self-start @5xl:sticky @5xl:top-4 @5xl:col-span-5 [@media(max-height:44rem)]:@5xl:static"
         >
           <div className="border border-ink bg-white p-5">
-            <h2 id={`${uid}-headline`} className="font-serif text-2xl">
-              Expected case
+            <h2
+              id="est-results"
+              tabIndex={-1}
+              className="font-serif text-2xl outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+            >
+              As entered case
             </h2>
             {e && est ? (
               <dl className="mt-4">
                 <Metric
                   label={`Net ${e.fullMonthlyNet >= 0 ? "saving" : "cost"} per month at full adoption`}
                   value={f.money(Math.abs(e.fullMonthlyNet))}
-                  note={`After run cost (${f.money(est.base.runCost)}) and review time (${f.money(est.base.reviewCost)}).`}
+                  note={headlineNote(est, f)}
                 />
-                <Metric label="Payback" value={paybackText(e.payback)} />
+                <Metric label="Payback" value={paybackOf(e)} />
                 <Metric
                   label={`Cumulative net after ${HORIZON} months, against doing nothing`}
                   value={f.money(e.cum36)}
@@ -407,8 +482,9 @@ export function EstimatorTool() {
               </dl>
             ) : (
               <p className="mt-4 text-ink-soft">
-                Results are paused until every field holds a valid number. Fix the fields
-                marked above, or reset to the example values.
+                Results are paused until every field holds a valid number. The fields that
+                need fixing are listed in the error summary at the top of the form, or you
+                can reset to the example values.
               </p>
             )}
             <p className="mt-4 border-t border-rule pt-3 text-sm text-ink-soft">
@@ -416,13 +492,13 @@ export function EstimatorTool() {
               forecast, a quote or a guarantee of any saving.
             </p>
 
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row xl:flex-wrap">
-              <button type="button" className="btn btn-quiet" onClick={reset}>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className="btn btn-quiet max-w-full" onClick={reset}>
                 Reset to example values
               </button>
               <button
                 type="button"
-                className="btn btn-quiet"
+                className="btn btn-quiet max-w-full"
                 onClick={copy}
                 disabled={!ready}
               >
@@ -430,7 +506,7 @@ export function EstimatorTool() {
               </button>
               <button
                 type="button"
-                className="btn btn-quiet"
+                className="btn btn-quiet max-w-full"
                 onClick={download}
                 disabled={!ready}
               >
@@ -467,6 +543,23 @@ export function EstimatorTool() {
   );
 }
 
+/** Costs shown in the headline note use the As entered cost multiplier, like the headline. */
+function headlineNote(est: Estimate, f: Formatters): string {
+  const e = est.expected;
+  const b = est.base;
+  const run = f.money(b.runCost * e.costMult);
+  const review = f.money(b.reviewCost * e.costMult);
+  const errors =
+    b.errorExtraCost > 0
+      ? ` and extra-error cost (${f.money(b.errorExtraCost * e.costMult)})`
+      : "";
+  const mult =
+    e.savingsMult !== 1 || e.costMult !== 1
+      ? ` Includes this case's multipliers: savings x${e.savingsMult}, costs x${e.costMult}.`
+      : "";
+  return `After run cost (${run}), review time (${review})${errors}.${mult}`;
+}
+
 function Results({ est, f }: { est: Estimate; f: Formatters }) {
   const b = est.base;
   const rows: { label: string; value: string }[] = [
@@ -482,21 +575,25 @@ function Results({ est, f }: { est: Estimate; f: Formatters }) {
     },
     { label: "Net hours freed, per month", value: f.hours(b.netHoursSaved) },
     { label: "Gross savings from time, per month", value: f.money(b.grossLabourSavings) },
-    { label: "Error savings, per month", value: f.money(b.errorSavings) },
+    {
+      label: "Error savings (negative if errors rise), per month",
+      value: f.money(b.errorSavings),
+    },
     { label: "Growth value, per month", value: f.money(b.growthValue) },
     { label: "Review cost, per month", value: f.money(b.reviewCost) },
+    { label: "Extra-error cost, per month", value: f.money(b.errorExtraCost) },
     { label: "Run cost, per month", value: f.money(b.runCost) },
     { label: "Net at full adoption, per month", value: f.money(b.monthlyNet) },
   ];
   const steps = explainSteps(est, f);
   const caption =
-    "Scenario results: net per month at full adoption, payback, cumulative net and ROI for the Conservative, Expected and Optimistic cases.";
+    "Scenario results: net per month at full adoption, payback, cumulative net and ROI for the Conservative, As entered and Optimistic cases.";
   const metricRows: [string, (s: Estimate["scenarios"][number]) => string][] = [
     ["Savings multiplier", (s) => `x${s.savingsMult}`],
     ["Cost multiplier", (s) => `x${s.costMult}`],
     ["Net per month, full adoption", (s) => f.money(s.fullMonthlyNet)],
     ["Net per year, full adoption", (s) => f.money(s.annualNet)],
-    ["Payback", (s) => paybackText(s.payback)],
+    ["Payback", (s) => paybackOf(s)],
     ["Cumulative net, 12 months", (s) => f.money(s.cum12)],
     ["Cumulative net, 24 months", (s) => f.money(s.cum24)],
     ["Cumulative net, 36 months", (s) => f.money(s.cum36)],
@@ -516,10 +613,10 @@ function Results({ est, f }: { est: Estimate; f: Formatters }) {
           {rows.map((r) => (
             <div
               key={r.label}
-              className="grid gap-x-6 border-t border-rule py-2.5 sm:grid-cols-[1fr_auto]"
+              className="grid gap-x-6 border-t border-rule py-2.5 @xl:grid-cols-[1fr_auto]"
             >
               <dt className="text-ink-soft">{r.label}</dt>
-              <dd className="font-medium [overflow-wrap:anywhere] sm:text-right">
+              <dd className="font-medium [overflow-wrap:anywhere] @xl:text-right">
                 {r.value}
               </dd>
             </div>
@@ -532,11 +629,12 @@ function Results({ est, f }: { est: Estimate; f: Formatters }) {
           Three cases side by side
         </h2>
         <p className="measure mt-3 text-ink-soft">
-          Conservative, Expected and Optimistic use the multipliers shown in the table.
-          You can edit them in the form. Each case is a way to test how sensitive the
-          answer is, not a prediction.
+          Conservative, As entered and Optimistic use the multipliers shown in the table.
+          As entered uses your numbers with the multipliers you set, which are 1 unless
+          you change them. You can edit all of them in the form. Each case is a way to
+          test how sensitive the answer is, not a prediction.
         </p>
-        <div className="mt-6 hidden sm:block">
+        <div className="mt-6 hidden @2xl:block">
           <table className="w-full border-collapse text-left">
             <caption className="sr-only">{caption}</caption>
             <thead>
@@ -568,7 +666,7 @@ function Results({ est, f }: { est: Estimate; f: Formatters }) {
             </tbody>
           </table>
         </div>
-        <div className="mt-6 space-y-8 sm:hidden">
+        <div className="mt-6 space-y-8 @2xl:hidden">
           {est.scenarios.map((s) => (
             <div key={s.id}>
               <h3 className="border-b border-ink pb-1 font-serif text-xl">{s.name}</h3>

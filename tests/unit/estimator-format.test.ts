@@ -17,7 +17,9 @@ import {
   explainSteps,
   invalidAnnouncement,
   makeFormatters,
+  paybackOf,
   paybackText,
+  problemReason,
   roiText,
 } from "@/lib/estimator-format";
 
@@ -25,7 +27,12 @@ const cad: Currency = { code: "CAD", otherLabel: "" };
 const other = (otherLabel: string): Currency => ({ code: "OTHER", otherLabel });
 
 function est(over: Partial<FieldValues> = {}) {
-  const v = validateInputs({ ...defaultValues, ...over });
+  const v = validateInputs({
+    ...defaultValues,
+    fullSharePct: "40",
+    realisationPct: "50",
+    ...over,
+  });
   if (!v.ok) throw new Error("invalid");
   return estimate(v.numbers);
 }
@@ -90,13 +97,44 @@ describe("text output", () => {
 
   it("announces the expected case in one sentence", () => {
     expect(announcement(e, f)).toBe(
-      "Expected case: net saving per month R924 at full adoption, payback in month 18.",
+      "As entered case: net saving per month R924 at full adoption, payback in month 18.",
     );
     expect(announcement(est({ runCost: "5000" }), f)).toMatch(
-      /net cost per month R\d[\d,]* at full adoption, payback not within 36 months\./,
+      /^As entered case: net cost per month R\d[\d,]* at full adoption, payback not within 36 months\.$/,
     );
-    expect(invalidAnnouncement(1)).toBe("Results paused: 1 field needs attention.");
-    expect(invalidAnnouncement(3)).toBe("Results paused: 3 fields need attention.");
+    expect(
+      invalidAnnouncement([{ label: "Tasks per month", reason: "needs a number" }]),
+    ).toBe("Results paused: Tasks per month needs a number.");
+    expect(
+      invalidAnnouncement([
+        { label: "A", reason: "needs a number" },
+        { label: "B", reason: "needs a number" },
+        { label: "C", reason: "needs a number" },
+        { label: "D", reason: "needs a number" },
+      ]),
+    ).toBe(
+      "Results paused: A needs a number; B needs a number; C needs a number; and 1 more.",
+    );
+    expect(
+      announcement(
+        est({ fullSharePct: "0", assistSharePct: "0", buildCost: "0", runCost: "0" }),
+        f,
+      ),
+    ).toBe(
+      "As entered case: nothing to compare. Enter a build or run cost and some savings.",
+    );
+  });
+
+  it("gives a short reason for each kind of validation message", () => {
+    expect(problemReason('Enter a number for "Tasks per month".')).toBe("needs a number");
+    expect(problemReason('"Runs" must be a number such as 1250.')).toBe("needs a number");
+    expect(problemReason('"Tasks" must be a whole number.')).toBe("needs a whole number");
+    expect(problemReason('"A" must be at most 100.')).toBe(
+      "is outside the allowed range",
+    );
+    expect(problemReason('"A" plus "B" cannot be more than 100%.')).toBe(
+      "pushes the shares over 100%",
+    );
   });
 
   it("explains each step with the user's own numbers", () => {
@@ -119,6 +157,27 @@ describe("text output", () => {
     );
     expect(breakEvenText({ kind: "unreachable" }, f)).toMatch(/does not break even/);
     expect(breakEvenText({ kind: "never" }, f)).toMatch(/review time costs as much/);
+    expect(breakEvenText({ kind: "no-savings" }, f)).toMatch(/multiplier .* is 0/);
+    expect(breakEvenText({ kind: "no-savings" }, f)).not.toMatch(/review/);
+    expect(breakEvenText({ kind: "fewer" }, f)).toMatch(
+      /each fully handled task adds net cost/,
+    );
+    expect(breakEvenText({ kind: "fewer" }, f)).toMatch(/Fewer fully handled tasks/);
+    expect(breakEvenText({ kind: "nothing" }, f)).toBe(
+      "Nothing to compare: enter a build or run cost and some savings.",
+    );
+  });
+
+  it("agrees between payback and break-even when there is nothing to compare", () => {
+    const z = est({
+      fullSharePct: "0",
+      assistSharePct: "0",
+      buildCost: "0",
+      runCost: "0",
+    });
+    expect(paybackOf(z.expected)).toBe("nothing to compare");
+    expect(breakEvenText(z.breakEven, f)).toMatch(/^Nothing to compare/);
+    expect(paybackOf(e.expected)).toBe("month 18");
   });
 
   it("builds a plain-text summary with inputs, results and exclusions", () => {
@@ -174,10 +233,11 @@ describe("CSV", () => {
   });
 
   it("neutralises spreadsheet formulas in text cells", () => {
-    expect(csvText("=HYPERLINK(1)")).toBe(" =HYPERLINK(1)");
-    expect(csvText("+1")).toBe(" +1");
-    expect(csvText("-1")).toBe(" -1");
-    expect(csvText("@SUM(A1)")).toBe(" @SUM(A1)");
+    expect(csvText("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
+    expect(csvText("+1")).toBe("'+1");
+    expect(csvText("-1")).toBe("'-1");
+    expect(csvText("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(csvText("\tx")).toBe("'\tx");
     const evil = buildCsv(e, other("=1+1"), "d");
     // The label sits mid-cell here, so it is safe as is.
     expect(evil).toContain("Currency label: =1+1");
