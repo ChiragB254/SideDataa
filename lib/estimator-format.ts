@@ -6,6 +6,7 @@ import {
   HORIZON,
   fieldGroups,
   fieldSpecs,
+  rowAt,
   type BreakEven,
   type Currency,
   type Estimate,
@@ -51,7 +52,8 @@ export function makeFormatters(c: Currency): Formatters {
     notation: "compact",
     maximumFractionDigits: 1,
   });
-  const prefix = c.code === "OTHER" ? (/^[A-Za-z]{2,}$/.test(label) ? `${label} ` : label) : "";
+  const prefix =
+    c.code === "OTHER" ? (/^[A-Za-z]{2,}$/.test(label) ? `${label} ` : label) : "";
 
   const money = (n: number): string => {
     if (!Number.isFinite(n)) return "not available";
@@ -171,18 +173,20 @@ export function explainSteps(est: Estimate, f: Formatters): Step[] {
     },
     {
       title: "Net per month at full adoption (Expected multipliers)",
-      formula: "(gross savings + errors + growth) x savings multiplier - (review + run cost) x cost multiplier",
+      formula:
+        "(gross savings + errors + growth) x savings multiplier - (review + run cost) x cost multiplier",
       working: `(${f.money(b.grossLabourSavings)} + ${f.money(b.errorSavings)} + ${f.money(b.growthValue)}) x ${f.number(e.savingsMult, 2)} - (${f.money(b.reviewCost)} + ${f.money(b.runCost)}) x ${f.number(e.costMult, 2)} = ${f.money(e.fullMonthlyNet)} a month, or ${f.money(e.annualNet)} a year.`,
     },
     {
       title: "Ramp-up",
-      formula: "in month k, the share of the full effect is the smaller of 1 and k / months to full adoption",
-      working: `With ${f.number(n.rampMonths, 0)} month${n.rampMonths === 1 ? "" : "s"} to full adoption, month 1 is ${f.percent(e.rows[1].adoption * 100)} and month ${Math.min(HORIZON, Math.max(2, Math.round(n.rampMonths)))} is ${f.percent(e.rows[Math.min(HORIZON, Math.max(2, Math.round(n.rampMonths)))].adoption * 100)}. Run cost is charged in full from month 1.`,
+      formula:
+        "in month k, the share of the full effect is the smaller of 1 and k / months to full adoption",
+      working: `With ${f.number(n.rampMonths, 0)} month${n.rampMonths === 1 ? "" : "s"} to full adoption, month 1 is ${f.percent(rowAt(e, 1).adoption * 100)} and month ${Math.min(HORIZON, Math.max(2, Math.round(n.rampMonths)))} is ${f.percent(rowAt(e, Math.min(HORIZON, Math.max(2, Math.round(n.rampMonths)))).adoption * 100)}. Run cost is charged in full from month 1.`,
     },
     {
       title: "Cumulative position against doing nothing",
       formula: "starts at minus the build cost; each month adds that month's net",
-      working: `Start: ${f.money(e.rows[0].cumulative)}. After 12 months: ${f.money(e.cum12)}. After 24: ${f.money(e.cum24)}. After 36: ${f.money(e.cum36)}. Doing nothing is the zero line.`,
+      working: `Start: ${f.money(rowAt(e, 0).cumulative)}. After 12 months: ${f.money(e.cum12)}. After 24: ${f.money(e.cum24)}. After 36: ${f.money(e.cum36)}. Doing nothing is the zero line.`,
     },
     {
       title: "Payback",
@@ -290,9 +294,16 @@ export function buildCsv(est: Estimate, currency: Currency, dateLabel: string): 
   const t = (s: string) => csvText(s);
   const row = (...cells: string[]) => rows.push(cells);
   row(t("AI savings and growth estimate"));
-  row(t("Planning aid, not a forecast, quote or guarantee. Every number comes from the inputs below."));
+  row(
+    t(
+      "Planning aid, not a forecast, quote or guarantee. Every number comes from the inputs below.",
+    ),
+  );
   row(t(`Made with the SideData Technologies estimator. ${dateLabel}`));
-  row(t(`Currency label: ${currencyName(currency)}`), t("No currency conversion is done."));
+  row(
+    t(`Currency label: ${currencyName(currency)}`),
+    t("No currency conversion is done."),
+  );
   row();
   row(t("Inputs"), t("Value"), t("Unit"));
   for (const g of fieldGroups) {
@@ -306,20 +317,40 @@ export function buildCsv(est: Estimate, currency: Currency, dateLabel: string): 
   row();
   row(t("Assumptions"));
   row(t("Month 0 holds the one-time build cost."));
-  row(t("Adoption grows in equal steps up to the months to full adoption, then stays at 100%."));
+  row(
+    t(
+      "Adoption grows in equal steps up to the months to full adoption, then stays at 100%.",
+    ),
+  );
   row(t("Run cost is charged in full from month 1. Review time scales with adoption."));
-  row(t("Savings are multiplied by the scenario savings multiplier; build, run and review costs by the cost multiplier."));
-  row(t("Doing nothing is the zero line: the cumulative figures are the difference against it."));
+  row(
+    t(
+      "Savings are multiplied by the scenario savings multiplier; build, run and review costs by the cost multiplier.",
+    ),
+  );
+  row(
+    t(
+      "Doing nothing is the zero line: the cumulative figures are the difference against it.",
+    ),
+  );
   row();
   row(t("Results"), t("Conservative"), t("Expected"), t("Optimistic"));
   const sc = est.scenarios;
   row(t("Net per month at full adoption"), ...sc.map((s) => num(s.fullMonthlyNet)));
   row(t("Net per year at full adoption"), ...sc.map((s) => num(s.annualNet)));
-  row(t("Payback month"), ...sc.map((s) => (s.payback === null ? t(`not within ${HORIZON} months`) : String(s.payback))));
+  row(
+    t("Payback month"),
+    ...sc.map((s) =>
+      s.payback === null ? t(`not within ${HORIZON} months`) : String(s.payback),
+    ),
+  );
   row(t("Cumulative net after 12 months"), ...sc.map((s) => num(s.cum12)));
   row(t("Cumulative net after 24 months"), ...sc.map((s) => num(s.cum24)));
   row(t("Cumulative net after 36 months"), ...sc.map((s) => num(s.cum36)));
-  row(t(`ROI over ${HORIZON} months (ratio)`), ...sc.map((s) => (s.roi36 === null ? "" : num(s.roi36))));
+  row(
+    t(`ROI over ${HORIZON} months (ratio)`),
+    ...sc.map((s) => (s.roi36 === null ? "" : num(s.roi36))),
+  );
   row();
   row(
     t("Month"),
@@ -329,17 +360,14 @@ export function buildCsv(est: Estimate, currency: Currency, dateLabel: string): 
   for (let k = 0; k <= HORIZON; k++) {
     row(
       String(k),
-      num(sc[1].rows[k].adoption * 100),
-      ...sc.flatMap((s) => [num(s.rows[k].net), num(s.rows[k].cumulative)]),
+      num(rowAt(sc[1], k).adoption * 100),
+      ...sc.flatMap((s) => [num(rowAt(s, k).net), num(rowAt(s, k).cumulative)]),
     );
   }
   return "﻿" + rows.map((r) => r.join(",")).join("\r\n") + "\r\n";
 }
 
-export function describeSeries(
-  s: ScenarioResult,
-  f: Formatters,
-): string {
+export function describeSeries(s: ScenarioResult, f: Formatters): string {
   return `${s.name}: ${f.money(s.cum12)} at 12 months, ${f.money(s.cum24)} at 24, ${f.money(s.cum36)} at 36; payback ${paybackText(s.payback)}.`;
 }
 

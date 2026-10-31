@@ -122,7 +122,12 @@
     background: transparent;
     color: var(--color-ink);
   }
-  .btn-quiet:hover {
+  .btn-quiet:disabled {
+    background: transparent;
+    color: var(--color-muted);
+    border-color: var(--color-rule-strong);
+  }
+  .btn-quiet:hover:not(:disabled) {
     background: var(--color-ink);
     border-color: var(--color-ink);
     color: var(--color-paper);
@@ -338,5 +343,14 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Estimator: the headline card stays in view beside the inputs on wide, tall screens.
+   It sits in its own column, so it never covers a focused field. */
+@media (min-width: 64rem) and (min-height: 45rem) {
+  .est-sticky {
+    position: sticky;
+    top: 1rem;
   }
 }

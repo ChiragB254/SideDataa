@@ -444,6 +444,13 @@ export function computeBase(n: Numbers): Base {
   };
 }
 
+/** Row for a month; the model always builds months 0..HORIZON, so a miss is a bug. */
+export function rowAt(s: { rows: MonthRow[] }, month: number): MonthRow {
+  const r = s.rows[month];
+  if (!r) throw new RangeError(`No row for month ${month}`);
+  return r;
+}
+
 export function adoptionAt(month: number, rampMonths: number): number {
   const ramp = Math.max(1, rampMonths);
   return Math.min(1, Math.max(0, month / ramp));
@@ -523,11 +530,13 @@ export function computeScenario(
     });
   }
   const fullMonthlyNet =
-    base.grossBenefit * savingsMult - base.reviewCost * costMult - base.runCost * costMult;
+    base.grossBenefit * savingsMult -
+    base.reviewCost * costMult -
+    base.runCost * costMult;
   let payback: number | null = null;
   if (fullMonthlyNet > 0) {
     for (let k = 1; k <= HORIZON; k++) {
-      if (rows[k].cumulative >= 0) {
+      if (rowAt({ rows }, k).cumulative >= 0) {
         payback = k;
         break;
       }
@@ -542,9 +551,9 @@ export function computeScenario(
     fullMonthlyNet,
     annualNet: fullMonthlyNet * 12,
     payback,
-    cum12: rows[12].cumulative,
-    cum24: rows[24].cumulative,
-    cum36: rows[36].cumulative,
+    cum12: rowAt({ rows }, 12).cumulative,
+    cum24: rowAt({ rows }, 24).cumulative,
+    cum36: rowAt({ rows }, 36).cumulative,
     totalBenefit36: totalBenefit,
     totalCost36: totalCost,
     roi36: totalCost > 0 ? (totalBenefit - totalCost) / totalCost : null,
