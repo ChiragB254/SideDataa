@@ -3,7 +3,7 @@ import { ServiceCards } from "@/components/ServiceCards";
 import { CtaBand } from "@/components/CtaBand";
 import { Steps } from "@/components/Steps";
 import { howWeWork } from "@/content/work";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "Services",

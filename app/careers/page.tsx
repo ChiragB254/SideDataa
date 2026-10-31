@@ -8,7 +8,7 @@ import { Row, RowTitle } from "@/components/Container";
 import { PageHeader } from "@/components/PageHeader";
 import { ApplyForm } from "@/components/forms/ApplyForm";
 import { roles } from "@/content/careers";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 
 export const metadata = pageMetadata({

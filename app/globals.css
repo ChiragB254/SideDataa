@@ -213,6 +213,58 @@
   .prose-copy li + li {
     margin-top: 0.4rem;
   }
+  .prose-copy ol {
+    list-style: decimal;
+    padding-left: 1.25rem;
+  }
+  .prose-copy blockquote {
+    border-left: 3px solid var(--color-rule-strong);
+    padding-left: 1rem;
+    color: var(--color-ink-soft);
+  }
+  .prose-copy code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
+  .prose-copy :not(pre) > code {
+    background: var(--color-wash);
+    padding: 0.1em 0.3em;
+    overflow-wrap: anywhere;
+  }
+  /* Code blocks scroll inside a focusable region instead of widening the page. */
+  .prose-copy pre {
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 1rem;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--color-ink);
+    background: var(--color-wash);
+    border: 1px solid var(--color-rule);
+  }
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--color-rule);
+  }
+  .prose-copy table {
+    width: 100%;
+    min-width: 28rem;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+  }
+  .prose-copy th,
+  .prose-copy td {
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .prose-copy th {
+    font-weight: 600;
+    color: var(--color-ink);
+    background: var(--color-wash);
+  }
   .prose-copy a {
     color: var(--color-accent);
     text-decoration: underline;

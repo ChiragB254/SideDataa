@@ -1,6 +1,6 @@
 import { Container } from "@/components/Container";
 import { ContactForm } from "@/components/forms/ContactForm";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 import Link from "next/link";
 

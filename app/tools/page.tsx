@@ -2,10 +2,8 @@ import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Container, Row } from "@/components/Container";
 import { CtaBand } from "@/components/CtaBand";
-import { JsonLd } from "@/components/JsonLd";
 import { estimatorPage } from "@/content/estimator";
-import { pageMetadata } from "@/lib/metadata";
-import { site } from "@/lib/site";
+import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "Free tools",
@@ -15,22 +13,17 @@ export const metadata = pageMetadata({
   ownImage: true,
 });
 
-const breadcrumbs = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: site.url },
-    { "@type": "ListItem", position: 2, name: "Tools", item: `${site.url}/tools` },
-  ],
-};
-
 export default function ToolsPage() {
   return (
     <>
-      <JsonLd data={breadcrumbs} />
       <section className="py-16 md:py-24">
         <Container>
-          <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Tools" }]} />
+          <Breadcrumb
+            items={[
+              { label: "Home", href: "/" },
+              { label: "Tools", href: "/tools" },
+            ]}
+          />
           <p className="eyebrow mt-2">Tools</p>
           <h1 className="mt-6 max-w-[22ch] text-5xl leading-[1.1] md:text-6xl">
             Free tools for planning your work.

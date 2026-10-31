@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Container, Row, RowTitle } from "@/components/Container";
+import { Faq } from "@/components/Faq";
 import { JsonLd } from "@/components/JsonLd";
 import { EstimatorTool } from "@/components/tools/EstimatorTool";
 import {
@@ -13,8 +14,9 @@ import {
   howToUse,
   leavesOut,
 } from "@/content/estimator";
-import { pageMetadata } from "@/lib/metadata";
-import { site } from "@/lib/site";
+import { authorPath, requireAuthor } from "@/lib/authors";
+import { webApplication } from "@/lib/jsonld";
+import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: page.title,
@@ -23,52 +25,15 @@ export const metadata = pageMetadata({
   ownImage: true,
 });
 
-const url = `${site.url}${page.path}`;
+const authorEntry = requireAuthor("chirag-bansal");
 
-const publisher = { "@type": "Organization", name: site.name, url: site.url };
-const person = {
-  "@type": "Person",
-  name: author.name,
-  jobTitle: author.role,
-  worksFor: publisher,
-  url: `${site.url}${author.cardPath}`,
-};
-
-const webApplication = {
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
+const webApplicationData = webApplication({
   name: page.name,
-  url,
+  path: page.path,
   description: page.description,
-  applicationCategory: "BusinessApplication",
-  operatingSystem: "Web",
-  inLanguage: "en-CA",
-  isAccessibleForFree: true,
   dateModified: page.updatedISO,
-  offers: { "@type": "Offer", price: "0", priceCurrency: "CAD" },
-  publisher,
-  author: person,
-};
-
-const breadcrumbs = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: site.url },
-    { "@type": "ListItem", position: 2, name: "Tools", item: `${site.url}/tools` },
-    { "@type": "ListItem", position: 3, name: page.name, item: url },
-  ],
-};
-
-const faqPage = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: faq.map((f) => ({
-    "@type": "Question",
-    name: f.q,
-    acceptedAnswer: { "@type": "Answer", text: f.a },
-  })),
-};
+  author: authorEntry,
+});
 
 function TitledList({ items }: { items: { title: string; body: string }[] }) {
   return (
@@ -86,9 +51,7 @@ function TitledList({ items }: { items: { title: string; body: string }[] }) {
 export default function EstimatorPage() {
   return (
     <>
-      <JsonLd data={webApplication} />
-      <JsonLd data={breadcrumbs} />
-      <JsonLd data={faqPage} />
+      <JsonLd data={webApplicationData} />
 
       <section className="pt-12 pb-10 md:pt-16 md:pb-14">
         <Container>
@@ -96,7 +59,7 @@ export default function EstimatorPage() {
             items={[
               { label: "Home", href: "/" },
               { label: "Tools", href: "/tools" },
-              { label: page.name },
+              { label: page.name, href: page.path },
             ]}
           />
           <p className="eyebrow mt-2">Free tool</p>
@@ -220,14 +183,7 @@ export default function EstimatorPage() {
         label="Questions"
         heading={<RowTitle id="faq">Frequently asked questions.</RowTitle>}
       >
-        <div className="measure border-b border-rule">
-          {faq.map((f) => (
-            <div key={f.q} className="border-t border-rule py-5">
-              <h3 className="font-serif text-xl leading-snug">{f.q}</h3>
-              <p className="mt-2 text-ink-soft">{f.a}</p>
-            </div>
-          ))}
-        </div>
+        <Faq items={faq} />
       </Row>
 
       <Row
@@ -246,7 +202,13 @@ export default function EstimatorPage() {
             {author.role}, {author.org}. {author.place}.
           </p>
           <p className="mt-1 text-ink-soft">{author.credential}.</p>
-          <p className="mt-3">
+          <p className="mt-3 flex flex-wrap gap-x-6">
+            <Link
+              href={authorPath(authorEntry)}
+              className="link inline-flex min-h-11 items-center"
+            >
+              About {author.name}
+            </Link>
             <Link
               href={author.cardPath}
               className="link inline-flex min-h-11 items-center"

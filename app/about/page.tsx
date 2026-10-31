@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Row, RowTitle } from "@/components/Container";
 import { PageHeader } from "@/components/PageHeader";
 import { CtaBand } from "@/components/CtaBand";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 
 export const metadata = pageMetadata({
@@ -112,6 +112,25 @@ export default function AboutPage() {
             If that interests you, see <Link href="/careers">careers</Link>.
           </p>
         </div>
+      </Row>
+
+      <Row
+        id="writing"
+        tone="tint"
+        label="Writing"
+        heading={<RowTitle id="writing">Who writes what you read here.</RowTitle>}
+      >
+        <p className="measure text-ink-soft">
+          Articles and tools on this site are written by a named person.{" "}
+          <Link className="link" href="/authors/chirag-bansal">
+            Chirag Bansal, CEO
+          </Link>{" "}
+          is the author, and our{" "}
+          <Link className="link" href="/about/editorial-policy">
+            editorial policy
+          </Link>{" "}
+          explains how we write and review.
+        </p>
       </Row>
 
       <Row

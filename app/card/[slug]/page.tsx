@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DigitalCard } from "@/components/card/DigitalCard";
 import { cardPath, cards, getCard } from "@/content/cards";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 
 export const dynamicParams = false;

@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { Container, Row, RowTitle } from "@/components/Container";
+import { Faq } from "@/components/Faq";
+import { JsonLd } from "@/components/JsonLd";
 import { ServiceIllustration } from "@/components/illustrations/ServiceIllustrations";
 import { Steps } from "@/components/Steps";
 import { CtaBand } from "@/components/CtaBand";
+import { serviceGuides } from "@/content/service-guides";
 import { getService, services } from "@/content/services";
-import { pageMetadata } from "@/lib/metadata";
+import { service as serviceJsonLd } from "@/lib/jsonld";
+import { pageMetadata } from "@/lib/seo";
 
 type Params = { slug: string };
 
@@ -25,7 +30,7 @@ export async function generateMetadata({
   const service = getService(slug);
   if (!service) return {};
   return pageMetadata({
-    title: service.title,
+    title: service.metaTitle ?? service.title,
     description: service.summary,
     path: `/services/${service.slug}`,
   });
@@ -37,26 +42,27 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
   if (!service) notFound();
 
   const others = services.filter((s) => s.slug !== service.slug);
+  const guide = serviceGuides[service.slug];
 
   return (
     <>
+      <JsonLd
+        data={serviceJsonLd({
+          name: service.title,
+          serviceType: service.title,
+          description: service.summary,
+          path: `/services/${service.slug}`,
+        })}
+      />
       <section className="py-16 md:py-24">
         <Container>
-          <nav aria-label="Breadcrumb">
-            <ol className="flex flex-wrap gap-2 text-sm text-muted">
-              <li>
-                <Link href="/services" className="link inline-flex min-h-11 items-center">
-                  Services
-                </Link>
-              </li>
-              <li aria-hidden="true" className="inline-flex items-center">
-                /
-              </li>
-              <li aria-current="page" className="inline-flex items-center">
-                {service.title}
-              </li>
-            </ol>
-          </nav>
+          <Breadcrumb
+            items={[
+              { label: "Home", href: "/" },
+              { label: "Services", href: "/services" },
+              { label: service.title, href: `/services/${service.slug}` },
+            ]}
+          />
           <div className="mt-2 grid items-center gap-10 lg:grid-cols-12">
             <div className="min-w-0 lg:col-span-7">
               <h1 className="mt-2 max-w-[22ch] text-5xl leading-[1.1] md:text-6xl">
@@ -140,14 +146,37 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
         </p>
       </Row>
 
+      <Row
+        id="need"
+        label="What we need from you"
+        heading={<RowTitle id="need">What helps us get started.</RowTitle>}
+      >
+        <ul className="measure border-b border-rule">
+          {guide.needFromYou.map((n) => (
+            <li key={n} className="border-t border-rule py-3">
+              {n}
+            </li>
+          ))}
+        </ul>
+      </Row>
+
+      <Row
+        id="faq"
+        tone="tint"
+        label="Questions"
+        heading={<RowTitle id="faq">Questions people ask us first.</RowTitle>}
+      >
+        <Faq items={guide.faq} />
+      </Row>
+
       <CtaBand title={`Talk to us about ${service.title.toLowerCase()}.`} />
 
       <Row
-        id="other"
-        label="Other services"
+        id="related"
+        label="Related"
         heading={
-          <h2 id="other-title" className="sr-only">
-            Other services
+          <h2 id="related-title" className="sr-only">
+            Related pages
           </h2>
         }
       >
@@ -162,6 +191,21 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
               </Link>
             </li>
           ))}
+          {service.slug === "ai-development" ? (
+            <li>
+              <Link
+                className="link inline-flex min-h-11 items-center"
+                href="/tools/ai-savings-estimator"
+              >
+                AI savings and growth estimator
+              </Link>
+            </li>
+          ) : null}
+          <li>
+            <Link className="link inline-flex min-h-11 items-center" href="/contact">
+              Contact us
+            </Link>
+          </li>
         </ul>
       </Row>
     </>
