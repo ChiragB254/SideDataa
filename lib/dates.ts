@@ -1,7 +1,7 @@
 /** "2 November 2026" from an ISO date or date-time. Uses the calendar date as written (Toronto). */
 export function formatDate(iso: string): string {
   const [y = 1970, m = 1, d = 1] = iso.slice(0, 10).split("-").map(Number);
-  return new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "long",
     year: "numeric",

@@ -152,7 +152,9 @@ test("editorial policy page states the plain policy and the review date", async 
     "How we write and review",
   );
   await expect(page.getByText(/AI tools may help with drafting/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "support@sidedataa.com" })).toBeVisible();
+  await expect(
+    page.locator("#main").getByRole("link", { name: "support@sidedataa.com" }),
+  ).toBeVisible();
   await expect(page.getByText(/Last reviewed:/)).toBeVisible();
 });
 

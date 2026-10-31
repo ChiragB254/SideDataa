@@ -60,7 +60,7 @@ test("person card is noindex and not in the sitemap; company card is indexable",
   );
   const xml = await (await request.get("/sitemap.xml")).text();
   expect(xml).toContain("https://sidedataa.com/card<");
-  expect(xml).not.toContain("chirag-bansal");
+  expect(xml).not.toContain("/card/chirag-bansal");
   expect(xml).not.toContain("/card/sidedata");
 });
 

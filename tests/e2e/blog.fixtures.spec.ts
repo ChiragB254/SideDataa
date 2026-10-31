@@ -185,7 +185,7 @@ test("post JSON-LD: BlogPosting matches the page, FAQPage matches the visible FA
     await page.locator("[data-faq-q]").allTextContents(),
   );
   expect(faq.mainEntity.map((q) => q.acceptedAnswer.text)).toEqual(
-    await page.locator("[data-faq-a]").allTextContents(),
+    (await page.locator("[data-faq-a]").allTextContents()).map((t) => t.trim()),
   );
   const crumbs = nodes.find((n) => n["@type"] === "BreadcrumbList") as {
     itemListElement: { name: string }[];

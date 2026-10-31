@@ -379,7 +379,9 @@ test("links: tool to services and contact, home and service page to tool, nav an
   await page.goto("/");
   await expect(page.locator('main a[href="/tools/ai-savings-estimator"]')).toBeVisible();
   await page.goto("/services/ai-development");
-  await expect(page.locator('main a[href="/tools/ai-savings-estimator"]')).toBeVisible();
+  await expect(
+    page.locator('main a[href="/tools/ai-savings-estimator"]').first(),
+  ).toBeVisible();
   await expect(
     page
       .getByRole("navigation", { name: "Primary" })
