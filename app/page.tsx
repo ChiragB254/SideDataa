@@ -58,6 +58,13 @@ export default function HomePage() {
         <p className="mt-6">
           <ArrowLink href="/services">See all services</ArrowLink>
         </p>
+        <p className="measure mt-2 text-ink-soft">
+          Weighing up an AI project? Try our free{" "}
+          <Link href="/tools/ai-savings-estimator" className="link">
+            AI savings and growth estimator
+          </Link>{" "}
+          to see roughly what it could cost and when it might pay back.
+        </p>
       </Row>
 
       <Row

@@ -10,6 +10,8 @@ const routes = [
   "/services/server-management",
   "/services/cloud-services",
   "/services/it-services",
+  "/tools",
+  "/tools/ai-savings-estimator",
   "/about",
   "/careers",
   "/contact",
@@ -327,6 +329,9 @@ for (const [route, width] of [
   ["/services/ai-development", 640],
   ["/services/ai-development", 1280],
   ["/careers", 640],
+  ["/tools", 640],
+  ["/tools/ai-savings-estimator", 640],
+  ["/tools/ai-savings-estimator", 1280],
 ] as const) {
   test(`200% text size, no horizontal scroll: ${route} at ${width}px`, async ({
     page,

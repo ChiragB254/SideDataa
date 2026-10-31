@@ -122,7 +122,12 @@
     background: transparent;
     color: var(--color-ink);
   }
-  .btn-quiet:hover {
+  .btn-quiet:disabled {
+    background: transparent;
+    color: var(--color-muted);
+    border-color: var(--color-rule-strong);
+  }
+  .btn-quiet:hover:not(:disabled) {
     background: var(--color-ink);
     border-color: var(--color-ink);
     color: var(--color-paper);

@@ -108,6 +108,15 @@ export default async function ServicePage({ params }: { params: Promise<Params> 
             </li>
           ))}
         </ul>
+        {service.slug === "ai-development" ? (
+          <p className="measure mt-6 text-ink-soft">
+            Not sure an AI project would pay for itself? Work through it with our free{" "}
+            <Link href="/tools/ai-savings-estimator" className="link">
+              AI savings and growth estimator
+            </Link>
+            .
+          </p>
+        ) : null}
       </Row>
 
       <Row

@@ -9,6 +9,8 @@ const routes = [
   "/services/server-management",
   "/services/cloud-services",
   "/services/it-services",
+  "/tools",
+  "/tools/ai-savings-estimator",
   "/about",
   "/careers",
   "/contact",
