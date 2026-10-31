@@ -8,6 +8,7 @@ import {
   estimate,
   niceScale,
   parseNumber,
+  rowAt,
   validateCurrency,
   validateInputs,
   type FieldValues,
@@ -74,7 +75,8 @@ describe("validation and parsing", () => {
   });
 
   it("enforces min, max and whole numbers with readable messages", () => {
-    const err = (over: Partial<FieldValues>) => validateInputs({ ...defaultValues, ...over }).errors;
+    const err = (over: Partial<FieldValues>) =>
+      validateInputs({ ...defaultValues, ...over }).errors;
     expect(err({ fullSharePct: "101" }).fullSharePct).toMatch(/at most 100/);
     expect(err({ minutesPerTask: "0" }).minutesPerTask).toMatch(/at least 0.1/);
     expect(err({ tasksPerMonth: "10.5" }).tasksPerMonth).toMatch(/whole number/);
@@ -83,7 +85,11 @@ describe("validation and parsing", () => {
   });
 
   it("rejects fully-handled plus assisted shares above 100", () => {
-    const r = validateInputs({ ...defaultValues, fullSharePct: "70", assistSharePct: "40" });
+    const r = validateInputs({
+      ...defaultValues,
+      fullSharePct: "70",
+      assistSharePct: "40",
+    });
     expect(r.ok).toBe(false);
     expect(r.errors.assistSharePct).toMatch(/add up to 110%/);
     expect(
@@ -93,7 +99,9 @@ describe("validation and parsing", () => {
 
   it("validates the custom currency label", () => {
     expect(validateCurrency({ code: "CAD", otherLabel: "" })).toBeNull();
-    expect(validateCurrency({ code: "OTHER", otherLabel: " " })).toMatch(/Type a currency/);
+    expect(validateCurrency({ code: "OTHER", otherLabel: " " })).toMatch(
+      /Type a currency/,
+    );
     expect(validateCurrency({ code: "OTHER", otherLabel: "ABCDEFG" })).toMatch(
       /6 characters/,
     );
@@ -137,7 +145,9 @@ describe("base calculation (hand-worked golden case)", () => {
   });
 
   it("lets error cost go negative when errors rise", () => {
-    const x = computeBase(nums({ errorsBefore: "2", errorsAfter: "6", costPerError: "10" }));
+    const x = computeBase(
+      nums({ errorsBefore: "2", errorsAfter: "6", costPerError: "10" }),
+    );
     expect(x.errorSavings).toBe(-40);
   });
 });
@@ -161,11 +171,11 @@ describe("scenarios (golden case)", () => {
 
   it("Expected: ramp rows, payback and cumulative values", () => {
     expect(exp.rows).toHaveLength(HORIZON + 1);
-    expect(exp.rows[0].cumulative).toBe(-15000);
-    expect(exp.rows[1].net).toBeCloseTo(-92, 9);
-    expect(exp.rows[2].net).toBeCloseTo(416, 9);
-    expect(exp.rows[3].net).toBeCloseTo(924, 9);
-    expect(exp.rows[3].cumulative).toBeCloseTo(-13752, 9);
+    expect(rowAt(exp, 0).cumulative).toBe(-15000);
+    expect(rowAt(exp, 1).net).toBeCloseTo(-92, 9);
+    expect(rowAt(exp, 2).net).toBeCloseTo(416, 9);
+    expect(rowAt(exp, 3).net).toBeCloseTo(924, 9);
+    expect(rowAt(exp, 3).cumulative).toBeCloseTo(-13752, 9);
     expect(exp.fullMonthlyNet).toBeCloseTo(924, 9);
     expect(exp.annualNet).toBeCloseTo(11088, 9);
     expect(exp.payback).toBe(18);
@@ -184,7 +194,7 @@ describe("scenarios (golden case)", () => {
   it("Conservative (savings x0.5, costs x1.3): never pays back", () => {
     expect(cons.savingsMult).toBe(0.5);
     expect(cons.costMult).toBe(1.3);
-    expect(cons.rows[0].cumulative).toBeCloseTo(-19500, 9);
+    expect(rowAt(cons, 0).cumulative).toBeCloseTo(-19500, 9);
     expect(cons.fullMonthlyNet).toBeCloseTo(-210, 9);
     expect(cons.payback).toBeNull();
     expect(cons.cum36).toBeCloseTo(-27630, 9);
@@ -192,7 +202,7 @@ describe("scenarios (golden case)", () => {
 
   it("Optimistic (savings x1.25, costs x1): pays back in month 13", () => {
     expect(opt.fullMonthlyNet).toBeCloseTo(1365, 9);
-    expect(opt.rows[1].net).toBeCloseTo(55, 9);
+    expect(rowAt(opt, 1).net).toBeCloseTo(55, 9);
     expect(opt.payback).toBe(13);
     expect(opt.cum36).toBeCloseTo(32175, 9);
   });
@@ -201,7 +211,7 @@ describe("scenarios (golden case)", () => {
     const e = estimate(nums({ expSave: "2", expCost: "0.5" }));
     // 1764 x 2 - (240 + 600) x 0.5 = 3528 - 420
     expect(e.expected.fullMonthlyNet).toBeCloseTo(3108, 9);
-    expect(e.expected.rows[0].cumulative).toBeCloseTo(-7500, 9);
+    expect(rowAt(e.expected, 0).cumulative).toBeCloseTo(-7500, 9);
   });
 });
 
@@ -214,8 +224,8 @@ describe("edge cases", () => {
   it("zero build cost with a ramp: waits until the cumulative is not negative", () => {
     // month 1 net -92 (cumulative -92), month 2 net 416 (cumulative 324).
     const e = estimate(nums({ buildCost: "0" }));
-    expect(e.expected.rows[1].cumulative).toBeCloseTo(-92, 9);
-    expect(e.expected.rows[2].cumulative).toBeCloseTo(324, 9);
+    expect(rowAt(e.expected, 1).cumulative).toBeCloseTo(-92, 9);
+    expect(rowAt(e.expected, 2).cumulative).toBeCloseTo(324, 9);
     expect(e.expected.payback).toBe(2);
   });
 
@@ -307,10 +317,13 @@ describe("break-even share", () => {
   });
 
   it("is 'unreachable' when the required share exceeds what assisted tasks leave", () => {
-    const b = breakEvenFullShare(nums({ assistSharePct: "70", fullSharePct: "20", buildCost: "40000" }), {
-      save: 1,
-      cost: 1,
-    });
+    const b = breakEvenFullShare(
+      nums({ assistSharePct: "70", fullSharePct: "20", buildCost: "40000" }),
+      {
+        save: 1,
+        cost: 1,
+      },
+    );
     expect(b.kind).toBe("unreachable");
   });
 });

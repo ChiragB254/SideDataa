@@ -46,7 +46,9 @@ describe("formatting", () => {
     expect(plain(makeFormatters({ code: "EUR", otherLabel: "" }).money(-50))).toMatch(
       /^-€50$/,
     );
-    expect(plain(makeFormatters({ code: "INR", otherLabel: "" }).money(10))).toContain("10");
+    expect(plain(makeFormatters({ code: "INR", otherLabel: "" }).money(10))).toContain(
+      "10",
+    );
   });
 
   it("never prints negative zero", () => {
@@ -109,8 +111,12 @@ describe("text output", () => {
   });
 
   it("states each break-even outcome in words", () => {
-    expect(breakEvenText({ kind: "needed", fullSharePct: 24.0571 }, f)).toContain("24.1%");
-    expect(breakEvenText({ kind: "already" }, f)).toMatch(/even if AI fully handles none/);
+    expect(breakEvenText({ kind: "needed", fullSharePct: 24.0571 }, f)).toContain(
+      "24.1%",
+    );
+    expect(breakEvenText({ kind: "already" }, f)).toMatch(
+      /even if AI fully handles none/,
+    );
     expect(breakEvenText({ kind: "unreachable" }, f)).toMatch(/does not break even/);
     expect(breakEvenText({ kind: "never" }, f)).toMatch(/review time costs as much/);
   });
@@ -143,10 +149,10 @@ describe("CSV", () => {
     expect(header).toBeGreaterThan(0);
     const body = lines.slice(header + 1).filter(Boolean);
     expect(body).toHaveLength(HORIZON + 1);
-    expect(body[0].split(",")[0]).toBe("0");
-    expect(body[HORIZON].split(",")[0]).toBe("36");
+    expect(body[0]?.split(",")[0]).toBe("0");
+    expect(body[HORIZON]?.split(",")[0]).toBe("36");
     // Month 3, Expected: net 924, cumulative -13752; columns 5 and 6 of the row.
-    const cells = body[3].split(",");
+    const cells = body[3]?.split(",") ?? [];
     expect(cells[0]).toBe("3");
     expect(cells[1]).toBe("100");
     expect(cells[4]).toBe("924");
