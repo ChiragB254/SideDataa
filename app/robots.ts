@@ -7,9 +7,9 @@ import { absoluteUrl } from "@/lib/seo";
  * or PerplexityBot can leave the site out of AI answers.
  *
  * Training crawlers (GPTBot, ClaudeBot, Google-Extended) are a BUSINESS CHOICE. They are
- * allowed here; blocking them does not affect search inclusion. To block them, move
- * "GPTBot", "ClaudeBot" and "Google-Extended" out of `allowedBots` into a rule with
- * `disallow: "/"` (one line: `{ userAgent: trainingBots, disallow: "/" }`).
+ * allowed here; blocking them does not affect search inclusion. To block them, delete
+ * "GPTBot", "ClaudeBot" and "Google-Extended" from `allowedBots` and add one rule:
+ *   { userAgent: ["GPTBot", "ClaudeBot", "Google-Extended"], disallow: "/" }
  *
  * Every group repeats the disallow list: a crawler follows only the most specific group
  * that names it, so a bare "allow: /" would otherwise re-open /api/ and /form-status.

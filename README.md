@@ -10,16 +10,17 @@ cp .env.example .env.local   # optional in development
 npm run dev                  # http://localhost:3000
 ```
 
-| Command               | What it does                                                                                                               |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `npm run lint`        | ESLint (Next.js core-web-vitals + TypeScript rules)                                                                        |
-| `npm run typecheck`   | `tsc --noEmit`                                                                                                             |
-| `npm test`            | Vitest: Zod schemas and the API route handlers                                                                             |
-| `npm run test:e2e`    | Playwright + axe-core on every route (builds and serves the site on port 3100; run `npx playwright install chromium` once) |
-| `npm run build`       | Production build                                                                                                           |
-| `npm run format`      | Prettier                                                                                                                   |
-| `npm run cards:qr`    | Regenerate QR codes from `content/cards.ts`                                                                                |
-| `npm run cards:print` | Render print-ready business card PDFs and previews to `design/cards/` (see `docs/CARDS.md`)                                |
+| Command               | What it does                                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `npm run lint`        | ESLint (Next.js core-web-vitals + TypeScript rules)                                                                          |
+| `npm run typecheck`   | `tsc --noEmit`                                                                                                               |
+| `npm test`            | Vitest: Zod schemas and the API route handlers                                                                               |
+| `npm run test:e2e`    | Playwright + axe-core on every route (builds and serves the site on port 3100; run `npx playwright install chromium` once)   |
+| `npm run build`       | Production build                                                                                                             |
+| `npm run seo:check`   | After `npm run build`: checks prerendered HTML, sitemap, robots and feed for SEO problems (see `docs/seo/IMPLEMENTATION.md`) |
+| `npm run format`      | Prettier                                                                                                                     |
+| `npm run cards:qr`    | Regenerate QR codes from `content/cards.ts`                                                                                  |
+| `npm run cards:print` | Render print-ready business card PDFs and previews to `design/cards/` (see `docs/CARDS.md`)                                  |
 
 ## Structure
 
@@ -34,7 +35,7 @@ design/cards/   print-ready card PDFs and PNG previews (generated)
 assets/fonts/   font files used by share images and print cards
 ```
 
-Edit copy in `content/`. Colours and type live as CSS variables in `app/globals.css`.
+Blog posts are Markdown files in `content/blog/` (none published yet); SEO, structured data and the blog engine are documented in `docs/seo/IMPLEMENTATION.md`. Edit copy in `content/`. Colours and type live as CSS variables in `app/globals.css`.
 
 ## Forms
 

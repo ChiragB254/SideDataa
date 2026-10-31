@@ -8,7 +8,7 @@ export const site = {
   country: "Canada",
   locationLabel: "Toronto, Ontario, Canada",
   description:
-    "SideData Technologies is an IT company in Toronto, Ontario. We build AI systems, websites and web applications, and we manage servers, cloud environments and everyday IT.",
+    "SideData Technologies is an IT company in Toronto, Ontario. We build AI systems and web applications, and manage servers, cloud and everyday IT.",
   /** Raster logo (512x512 render of public/logo-mark.svg); Google wants a logo of at least 112x112 px. */
   logoPath: "/logo.png",
 } as const;
