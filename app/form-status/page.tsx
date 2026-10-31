@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Container } from "@/components/Container";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 import { RESUME_FILE_PHRASE } from "@/lib/resume";
 

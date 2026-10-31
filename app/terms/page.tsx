@@ -1,5 +1,5 @@
 import { LegalPage } from "@/components/LegalPage";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 
 /*

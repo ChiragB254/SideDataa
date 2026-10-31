@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Logo } from "./Logo";
-import { nav } from "@/lib/site";
+import type { NavItem } from "@/lib/site";
 
-export function SiteHeader() {
+export function SiteHeader({ items }: { items: readonly NavItem[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +45,7 @@ export function SiteHeader() {
 
         <nav aria-label="Primary" className="hidden md:block">
           <ul className="flex items-center gap-1">
-            {nav.map((item) => (
+            {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
@@ -100,7 +100,7 @@ export function SiteHeader() {
       >
         <nav aria-label="Mobile" className="mx-auto max-w-6xl px-5 pb-4 sm:px-8">
           <ul>
-            {nav.map((item) => (
+            {items.map((item) => (
               <li key={item.href} className="border-t border-rule first:border-t-0">
                 <Link
                   href={item.href}

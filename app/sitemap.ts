@@ -1,25 +1,8 @@
 import type { MetadataRoute } from "next";
-import { services } from "@/content/services";
-import { site } from "@/lib/site";
+import { getPublishedPosts } from "@/lib/blog";
+import { sitemapEntries } from "@/lib/sitemap-entries";
 
+// No changefreq or priority (Google ignores them); lastModified only from real dates.
 export default function sitemap(): MetadataRoute.Sitemap {
-  const paths = [
-    "/",
-    "/services",
-    ...services.map((s) => `/services/${s.slug}`),
-    "/tools",
-    "/tools/ai-savings-estimator",
-    "/about",
-    "/careers",
-    "/contact",
-    "/card",
-    "/privacy",
-    "/terms",
-    "/accessibility",
-  ];
-  return paths.map((p) => ({
-    url: `${site.url}${p === "/" ? "" : p}`,
-    changeFrequency: "monthly",
-    priority: p === "/" ? 1 : 0.7,
-  }));
+  return sitemapEntries(getPublishedPosts());
 }

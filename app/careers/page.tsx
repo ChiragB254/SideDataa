@@ -8,13 +8,13 @@ import { Row, RowTitle } from "@/components/Container";
 import { PageHeader } from "@/components/PageHeader";
 import { ApplyForm } from "@/components/forms/ApplyForm";
 import { roles } from "@/content/careers";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 import { site } from "@/lib/site";
 
 export const metadata = pageMetadata({
   title: "Careers",
   description:
-    "Unpaid internships in India for a Web Developer, a Content Writer, and a UI/UX and Graphic Designer, run under a joint venture between SideData Technologies and Right Click Orbit (India). Mentorship, a Claude subscription and an experience letter.",
+    "Unpaid internships in India for a Web Developer, a Content Writer, and a UI/UX and Graphic Designer, run with Right Click Orbit (India). Includes mentorship.",
   path: "/careers",
   ownImage: true,
 });

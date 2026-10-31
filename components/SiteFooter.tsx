@@ -51,6 +51,11 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
+                <Link className={linkClass} href="/about/editorial-policy">
+                  Editorial policy
+                </Link>
+              </li>
+              <li>
                 <Link className={linkClass} href="/careers">
                   Careers
                 </Link>

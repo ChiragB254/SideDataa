@@ -5,6 +5,8 @@ export type ServiceSlug = (typeof serviceSlugs)[number];
 export type Service = {
   slug: ServiceSlug;
   title: string;
+  /** Shorter page title for <title> and share cards when `title` is too long for search results. */
+  metaTitle?: string;
   /** One line used in lists and metadata. */
   summary: string;
   /** Opening paragraph(s) of the service page. */
@@ -85,6 +87,7 @@ export const services: Service[] = [
   {
     slug: "web-development",
     title: "Website and web application development",
+    metaTitle: "Website and web app development",
     summary:
       "Marketing sites, customer portals and internal tools that are fast, accessible and maintainable.",
     intro: [

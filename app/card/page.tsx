@@ -1,6 +1,6 @@
 import { DigitalCard } from "@/components/card/DigitalCard";
 import { getCard } from "@/content/cards";
-import { pageMetadata } from "@/lib/metadata";
+import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "Digital card",

@@ -5,12 +5,16 @@ import { HeroIllustration } from "@/components/illustrations/HeroIllustration";
 import { Steps } from "@/components/Steps";
 import { ArrowLink } from "@/components/ArrowLink";
 import { CtaBand } from "@/components/CtaBand";
+import { JsonLd } from "@/components/JsonLd";
 import { howWeWork, stack } from "@/content/work";
+import { organization, website } from "@/lib/jsonld";
 import { site } from "@/lib/site";
 
 export default function HomePage() {
   return (
     <>
+      <JsonLd data={organization()} />
+      <JsonLd data={website()} />
       <section className="py-14 md:py-20">
         <Container>
           <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-10">
